@@ -97,6 +97,8 @@ export default function App() {
 
       // BAG pand info
       let buildingInfo = null;
+      let geometry = null; // <--- nieuw
+
       if (pandIdentificatie) {
         const bagUrl = `${BAG_PAND_URL}?identificatie=${pandIdentificatie}&f=json`;
         const bagResp = await fetch(bagUrl);
@@ -104,16 +106,17 @@ export default function App() {
           const bagData = await bagResp.json();
           const features = bagData.features || bagData.items || [];
           if (features.length > 0) {
-            const props =
-              features[0].properties ||
-              features[0].properties ||
-              features[0];
+            const feature = features[0];
+            const props = feature.properties || feature;
             buildingInfo = {
               bouwjaar: props.bouwjaar,
-              gebruiksdoel:
-                props.gebruiksdoel || props.gebruiksdoelen,
+              gebruiksdoel: props.gebruiksdoel || props.gebruiksdoelen,
               status: props.status
             };
+            // GeoJSON-geometrie rechtstreeks doorgeven
+            if (feature.geometry) {
+              geometry = feature.geometry;
+            }
           }
         }
       }
@@ -152,7 +155,8 @@ export default function App() {
         address: formattedAddress,
         coords,
         buildingInfo,
-        cbsStats
+        cbsStats,
+        geometry // <--- nieuw
       });
     } catch (err) {
       console.error(err);
@@ -168,7 +172,8 @@ export default function App() {
       address: result.address,
       coords: result.coords,
       buildingInfo: result.buildingInfo,
-      cbsStats: result.cbsStats
+      cbsStats: result.cbsStats,
+      geometry: result.geometry   // <--- nieuw
     };
   }
 
