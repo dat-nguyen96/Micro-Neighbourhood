@@ -10,11 +10,14 @@ from fastapi.staticfiles import StaticFiles
 from openai import OpenAI
 from pydantic import BaseModel, Field
 
+import pandas as pd
+import geopandas as gpd
+from shapely.geometry import shape
+
 # ---------- paths & env ----------
 BASE_DIR = Path(__file__).resolve().parent
 FRONTEND_DIST = BASE_DIR.parent / "frontend" / "dist"
 
-# .env alleen lokaal; op Railway gebruik je env vars in de UI
 env_path = BASE_DIR / ".env"
 if env_path.exists():
     load_dotenv(env_path)
@@ -35,8 +38,8 @@ client = OpenAI(api_key=OPENAI_API_KEY)
 
 app = FastAPI(
     title="Neighbourhood Explorer API",
-    version="0.2.0",
-    description="API voor NL buurtverhalen met AI.",
+    version="0.3.0",
+    description="API voor NL buurtverhalen met AI, pandas & geopandas.",
 )
 
 # CORS: lokale dev + optionele frontend origin uit env
@@ -63,8 +66,11 @@ app.add_middleware(
 class NeighbourhoodStoryRequest(BaseModel):
     data: Dict[str, Any] = Field(
         ...,
-        description="Gestructureerde data over de buurt (JSON). "
-                    "Moet minimaal een 'address' bevatten.",
+        description=(
+            "Gestructureerde data over de buurt (JSON). "
+            "Moet minimaal een 'address' bevatten. "
+            "Optioneel kan er ook een 'geometry' (GeoJSON) in zitten."
+        ),
     )
     persona: Optional[str] = Field(
         default=None,
@@ -74,6 +80,63 @@ class NeighbourhoodStoryRequest(BaseModel):
 
 class NeighbourhoodStoryResponse(BaseModel):
     story: str
+    area_ha: Optional[float] = None
+    centroid_lat: Optional[float] = None
+    centroid_lon: Optional[float] = None
+
+
+# ---------- Data-analyse helpers (pandas & geopandas) ----------
+
+
+def analyse_neighbourhood_data(data: Dict[str, Any]) -> dict:
+    """
+    Gebruik pandas/geopandas om een compacte samenvatting van de data te maken
+    voor de LLM én wat ruwe stats terug te geven.
+    """
+    df = pd.json_normalize(data)
+
+    summary_lines: list[str] = []
+
+    numeric_cols = df.select_dtypes(include="number").columns.tolist()
+    if numeric_cols:
+        summary_lines.append("Enkele numerieke indicatoren uit de data:")
+        for col in numeric_cols[:10]:
+            val = df[col].iloc[0]
+            summary_lines.append(f"- {col}: {val}")
+    else:
+        summary_lines.append("Geen numerieke indicatoren gevonden in de data.")
+
+    area_ha = None
+    centroid_lat = None
+    centroid_lon = None
+
+    if "geometry" in data:
+        try:
+            geom = shape(data["geometry"])
+            gdf = gpd.GeoDataFrame(df, geometry=[geom], crs="EPSG:4326")
+
+            gdf_m = gdf.to_crs(3857)
+            area_m2 = float(gdf_m.area.iloc[0])
+            area_ha = area_m2 / 10_000
+            summary_lines.append(f"Benaderde oppervlakte: {area_ha:.1f} hectare.")
+
+            centroid = gdf.to_crs(4326).geometry.iloc[0].centroid
+            centroid_lat = float(centroid.y)
+            centroid_lon = float(centroid.x)
+            summary_lines.append(
+                f"Ongeveer centrum op (lat, lon): "
+                f"{centroid_lat:.5f}, {centroid_lon:.5f}."
+            )
+        except Exception as exc:
+            print("Geometrie-analyse mislukt:", repr(exc))
+            summary_lines.append("Geometrie aanwezig maar kon niet worden geanalyseerd.")
+
+    return {
+        "summary_text": "\n".join(summary_lines),
+        "area_ha": area_ha,
+        "centroid_lat": centroid_lat,
+        "centroid_lon": centroid_lon,
+    }
 
 
 # ---------- OpenAI helper ----------
@@ -103,7 +166,6 @@ def call_openai(prompt: str, max_tokens: int = 800) -> str:
             max_tokens=max_tokens,
         )
     except Exception as exc:
-        # In productie zou je hier logging gebruiken ipv print
         print("OpenAI fout:", repr(exc))
         raise
 
@@ -124,6 +186,9 @@ async def neighbourhood_story(req: NeighbourhoodStoryRequest):
 
     persona = req.persona or "algemeen huishouden"
 
+    analysis = analyse_neighbourhood_data(req.data)
+    analysis_summary = analysis["summary_text"]
+
     prompt = f"""
 Acteer als een neutrale Nederlandse buurtuitlegger.
 
@@ -138,9 +203,13 @@ Regels:
 - Wees beschrijvend maar neutraal.
 - Focus op vibe: druk/rustig, jong/oud, voorzieningen, woningtype.
 
-Persona: {persona}
+Persona van de lezer: {persona}
 
-Data (JSON):
+Samenvatting van de ruwe buurtdata (uit een pandas/geopandas-analyse):
+
+{analysis_summary}
+
+Originele data (JSON):
 {req.data}
 
 Schrijf nu:
@@ -154,13 +223,17 @@ Schrijf nu:
     try:
         story = call_openai(prompt)
     except Exception:
-        # We loggen al in call_openai, hier alleen HTTP-fout terug
         raise HTTPException(
             status_code=502,
             detail="AI-fout bij genereren buurtverhaal",
         )
 
-    return NeighbourhoodStoryResponse(story=story)
+    return NeighbourhoodStoryResponse(
+        story=story,
+        area_ha=analysis["area_ha"],
+        centroid_lat=analysis["centroid_lat"],
+        centroid_lon=analysis["centroid_lon"],
+    )
 
 
 @app.get("/api/health")
@@ -171,7 +244,6 @@ async def health():
 # ---------- Static React build ----------
 
 if FRONTEND_DIST.exists():
-    # Dit serveert de frontend build als root
     app.mount(
         "/", StaticFiles(directory=str(FRONTEND_DIST), html=True), name="static"
     )

@@ -38,6 +38,9 @@ export default function App() {
   const [storyLoading, setStoryLoading] = useState(false);
   const [storyText, setStoryText] = useState("");
 
+  const [storyAreaHa, setStoryAreaHa] = useState(null);
+  const [storyCentroid, setStoryCentroid] = useState(null);
+
   async function handleSearch(e) {
     e.preventDefault();
     setError("");
@@ -182,6 +185,8 @@ export default function App() {
     if (!data) return;
     setStoryLoading(true);
     setStoryText("");
+    setStoryAreaHa(null);
+    setStoryCentroid(null);
     try {
       const resp = await fetch("/api/neighbourhood-story", {
         method: "POST",
@@ -190,7 +195,14 @@ export default function App() {
       });
       const json = await resp.json();
       if (!resp.ok) throw new Error(json.detail || json.error || "AI-fout");
+
       setStoryText(json.story || "");
+      if (json.area_ha != null) {
+        setStoryAreaHa(json.area_ha);
+      }
+      if (json.centroid_lat != null && json.centroid_lon != null) {
+        setStoryCentroid([json.centroid_lat, json.centroid_lon]);
+      }
     } catch (err) {
       console.error(err);
       setStoryText(
@@ -334,6 +346,20 @@ export default function App() {
               <p className="small">
                 Geen CBS-buurtcijfers gevonden.
               </p>
+            )}
+
+            {storyAreaHa != null && (
+              <div className="stat-grid" style={{ marginTop: "0.75rem" }}>
+                <div className="stat-card">
+                  <div className="stat-label">Oppervlakte pand (geopandas)</div>
+                  <div className="stat-value">
+                    {nf1.format(storyAreaHa)} <span className="small">ha</span>
+                  </div>
+                  <div className="stat-help">
+                    Benadering op basis van BAG-geometrie; geen juridisch kadastraal oppervlak.
+                  </div>
+                </div>
+              </div>
             )}
 
             {/* AI: Buurtverhaal */}
