@@ -208,6 +208,30 @@ def analyse_neighbourhood_data(data: Dict[str, Any]) -> Tuple[str, Dict[str, Opt
     else:
         print("[ANALYSE] No geometry field in data; skipping GeoPandas.")
 
+    # 3) Cluster informatie (ML-gebaseerde classificatie)
+    if "clusterInfo" in data and data["clusterInfo"]:
+        cluster_info = data["clusterInfo"]
+        print(f"[ANALYSE] Cluster info found: {cluster_info}")
+        summary_lines.append("\nMachine Learning cluster analyse:")
+        if "label" in cluster_info:
+            summary_lines.append(f"- Buurt type: {cluster_info['label']}")
+        if "label_long" in cluster_info:
+            summary_lines.append(f"- Beschrijving: {cluster_info['label_long']}")
+
+    # 4) Vergelijkbare buurten (KNN resultaten)
+    if "similarBuurten" in data and data["similarBuurten"] and "neighbours" in data["similarBuurten"]:
+        neighbours = data["similarBuurten"]["neighbours"]
+        if neighbours and len(neighbours) > 0:
+            print(f"[ANALYSE] Found {len(neighbours)} similar neighbourhoods")
+            summary_lines.append(f"\nVergelijkbare buurten gevonden via KNN ({len(neighbours)} resultaten):")
+            for i, nb in enumerate(neighbours[:3]):  # Toon max 3 voorbeelden
+                buurt_info = f"- {nb.get('naam', nb.get('buurt_code', 'Onbekend'))}"
+                if 'gemeente' in nb:
+                    buurt_info += f" ({nb['gemeente']})"
+                if 'cluster_label_short' in nb:
+                    buurt_info += f" - type: {nb['cluster_label_short']}"
+                summary_lines.append(buurt_info)
+
     return "\n".join(summary_lines), metrics
 
 
@@ -364,16 +388,22 @@ Je krijgt gestructureerde data over één klein gebied in Nederland
 (en eventueel een persona) en je schrijft een korte, vriendelijke
 uitleg voor iemand die overweegt daar te wonen.
 
+BELANGRIJK: De data bevat ook machine learning informatie zoals:
+- Cluster classificatie (buurt type gebaseerd op socio-demografische data)
+- Vergelijkbare buurten gevonden via KNN algoritme
+Gebruik deze ML-inzichten om de buurtbeschrijving te verrijken met context over hoe deze buurt zich verhoudt tot andere Nederlandse buurten.
+
 Regels:
 - Schrijf in het Nederlands.
 - Maximaal 5 korte alinea's.
 - Geen juridisch, financieel of veiligheidsadvies.
 - Wees beschrijvend maar neutraal.
 - Focus op vibe: druk/rustig, jong/oud, voorzieningen, woningtype.
+- Gebruik de cluster informatie om bredere context te geven over het buurtkarakter.
 
 Persona van de lezer: {persona}
 
-Samenvatting van de ruwe buurtdata (uit een pandas/geopandas-analyse):
+Samenvatting van de ruwe buurtdata (uit een pandas/geopandas-analyse inclusief ML-cluster analyse):
 
 {analysis_summary}
 
@@ -383,7 +413,7 @@ Originele data (JSON):
 Schrijf nu:
 
 1) Een titel van max 60 tekens.
-2) Een korte samenvattende intro (1–2 zinnen).
+2) Een korte samenvattende intro (1–2 zinnen) die het buurtkarakter benadrukt.
 3) Kopje "Pluspunten" met 3 bullets.
 4) Kopje "Let op" met 3 bullets.
 """

@@ -343,6 +343,8 @@ export default function App() {
       buildingInfo: result.buildingInfo,
       cbsStats: result.cbsStats,
       geometry: result.geometry,
+      clusterInfo: clusterInfo,
+      similarBuurten: similarBuurten,
     };
   }
 
@@ -878,7 +880,7 @@ export default function App() {
 
             {/* MAP + STATS + AI/ML INSIGHTS */}
             <section className="section insights-grid">
-              {/* Left: big map */}
+              {/* Left: big map + PCA chart */}
               <div className="insights-map-column">
                 {result.coords && (
                   <div className="map-card">
@@ -886,6 +888,16 @@ export default function App() {
                     <p className="small">
                       Benadering van de locatie. Geen juridisch kaartmateriaal.
                     </p>
+                  </div>
+                )}
+
+                {/* PCA chart - moved here under the map */}
+                {pcaChartOptions && (
+                  <div className="stat-card" style={{ marginTop: "1rem" }}>
+                    <HighchartsReact
+                      highcharts={Highcharts}
+                      options={pcaChartOptions}
+                    />
                   </div>
                 )}
               </div>
@@ -1058,16 +1070,6 @@ export default function App() {
                           </li>
                         ))}
                       </ul>
-                    </div>
-                  )}
-
-                  {/* PCA chart */}
-                  {pcaChartOptions && (
-                    <div className="stat-card">
-                      <HighchartsReact
-                        highcharts={Highcharts}
-                        options={pcaChartOptions}
-                      />
                     </div>
                   )}
 
