@@ -86,6 +86,11 @@ function getClusterVisual(clusterId, labelShort) {
   return { icon: "💎", toneClass: "cluster-pill-wealthy" };
 }
 
+function capitalizeFirst(str) {
+  if (!str) return str;
+  return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
 function getClusterIcon(labelShort) {
   const s = (labelShort || "").toLowerCase();
   if (!s) return "📍";
@@ -750,7 +755,7 @@ export default function App() {
       : null;
 
   const clusterVisual = clusterInfo
-    ? getClusterVisual(clusterInfo.cluster, clusterInfo.label)
+    ? getClusterVisual(clusterInfo.cluster, capitalizeFirst(clusterInfo.label))
     : null;
 
   return (
@@ -807,7 +812,7 @@ export default function App() {
                         {clusterVisual.icon}
                       </span>
                     )}
-                    {clusterInfo.label || `Cluster ${clusterInfo.cluster}`}
+                    {capitalizeFirst(clusterInfo.label) || `Cluster ${clusterInfo.cluster}`}
                   </span>
                 )}
                 {incomeBadge && (
@@ -997,9 +1002,9 @@ export default function App() {
                       <div className="stat-label">Buurtprofiel (cluster)</div>
                       <div className="stat-value">
                         <span style={{ marginRight: "0.35rem" }}>
-                          {getClusterIcon(clusterInfo.label)}
+                          {getClusterIcon(capitalizeFirst(clusterInfo.label))}
                         </span>
-                        {clusterInfo.label}
+                        {capitalizeFirst(clusterInfo.label) || clusterInfo.label}
                       </div>
                       {clusterInfo.label_long && (
                         <div className="stat-help small">{clusterInfo.label_long}</div>
@@ -1034,14 +1039,14 @@ export default function App() {
                         {similarBuurten.neighbours.map((b) => (
                           <li key={b.buurt_code}>
                             <span className="similar-icon">
-                              {getClusterIcon(b.cluster_label_short)}
+                              {getClusterIcon(capitalizeFirst(b.cluster_label_short))}
                             </span>
                             <div className="similar-main">
                               <div className="similar-title">
                                 {b.buurt_code} – {b.gemeente}
                               </div>
                               <div className="small">
-                                {b.cluster_label_short} •{" "}
+                                {capitalizeFirst(b.cluster_label_short)} •{" "}
                                 {b.income_per_person != null
                                   ? `inkomen: ${formatOrNA(b.income_per_person, nf1)} × 1000 €`
                                   : "inkomen: n.v.t."}

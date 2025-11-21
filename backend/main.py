@@ -452,10 +452,15 @@ async def similar_buurten(
         if len(neighbours) >= k:
             break
 
+    base_short = str(base_row.get("cluster_label_short", ""))
+    base_long = str(base_row.get("cluster_label_long", ""))
+
+    print(f"[API] /api/similar-buurten for {buurt_code}: base_cluster_label_short='{base_short}', base_cluster_label_long='{base_long}'")
+
     return SimilarBuurtenResponse(
         base_buurt_code=str(buurt_code).strip(),
-        base_cluster_label_short=str(base_row.get("cluster_label_short", "")),
-        base_cluster_label_long=str(base_row.get("cluster_label_long", "")),
+        base_cluster_label_short=base_short,
+        base_cluster_label_long=base_long,
         base_pca_x=float(base_row["pca_x"]) if "pca_x" in base_row and pd.notna(base_row["pca_x"]) else None,
         base_pca_y=float(base_row["pca_y"]) if "pca_y" in base_row and pd.notna(base_row["pca_y"]) else None,
         neighbours=neighbours,
