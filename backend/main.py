@@ -1,42 +1,57 @@
+# backend/main.py
 import os
 from pathlib import Path
+from typing import Optional, Dict, Any
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
-from dotenv import load_dotenv
 from openai import OpenAI
-from typing import Optional
+from pydantic import BaseModel, Field
 
-# ---------- env & OpenAI ----------
-
+# ---------- paths & env ----------
 BASE_DIR = Path(__file__).resolve().parent
 FRONTEND_DIST = BASE_DIR.parent / "frontend" / "dist"
 
-# .env alleen lokaal; op Railway zet je env vars in de UI
-load_dotenv(BASE_DIR / ".env")
+# .env alleen lokaal; op Railway gebruik je env vars in de UI
+env_path = BASE_DIR / ".env"
+if env_path.exists():
+    load_dotenv(env_path)
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+BACKEND_ENV = os.getenv("BACKEND_ENV", "local")  # bv. "local", "production"
 
 if not OPENAI_API_KEY:
-  raise RuntimeError("OPENAI_API_KEY is niet gezet (zie .env of Railway env vars).")
+    raise RuntimeError(
+        "OPENAI_API_KEY is niet gezet. "
+        "Zet deze in .env (lokaal) of als Railway environment variable."
+    )
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 
 # ---------- FastAPI app ----------
 
-app = FastAPI()
+app = FastAPI(
+    title="Neighbourhood Explorer API",
+    version="0.2.0",
+    description="API voor NL buurtverhalen met AI.",
+)
 
-# CORS voor lokale dev (Vite op 5173)
+# CORS: lokale dev + optionele frontend origin uit env
+origins = [
+    "http://localhost",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+frontend_origin = os.getenv("FRONTEND_ORIGIN")
+if frontend_origin:
+    origins.append(frontend_origin)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost",
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -44,41 +59,72 @@ app.add_middleware(
 
 # ---------- Pydantic modellen ----------
 
+
 class NeighbourhoodStoryRequest(BaseModel):
-    data: dict
-    persona: Optional[str] = None
+    data: Dict[str, Any] = Field(
+        ...,
+        description="Gestructureerde data over de buurt (JSON). "
+                    "Moet minimaal een 'address' bevatten.",
+    )
+    persona: Optional[str] = Field(
+        default=None,
+        description="Optionele persona, bv. 'jong stel', 'gezin met kinderen'.",
+    )
+
+
+class NeighbourhoodStoryResponse(BaseModel):
+    story: str
+
+
+# ---------- OpenAI helper ----------
+
 
 def call_openai(prompt: str, max_tokens: int = 800) -> str:
     """
     Eenvoudige helper om een chat completion aan te roepen.
+    Gooit een exception door bij fouten, zodat de endpoint dat kan afhandelen.
     """
-    completion = client.chat.completions.create(
-        model="gpt-4o-mini",  # kan je ook "gpt-4o" maken als je wilt
-        messages=[
-            {
-                "role": "developer",
-                "content": "Je bent een Nederlandse assistent. "
-                           "Geef geen juridisch of financieel advies.",
-            },
-            {
-                "role": "user",
-                "content": prompt,
-            },
-        ],
-        max_tokens=max_tokens,
-    )
+    try:
+        completion = client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Je bent een behulpzame, neutrale Nederlandse tekstschrijver. "
+                        "Geef geen juridisch, financieel of veiligheidsadvies."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": prompt,
+                },
+            ],
+            max_tokens=max_tokens,
+        )
+    except Exception as exc:
+        # In productie zou je hier logging gebruiken ipv print
+        print("OpenAI fout:", repr(exc))
+        raise
+
     content = completion.choices[0].message.content
     return content or ""
 
-@app.post("/api/neighbourhood-story")
-def neighbourhood_story(req: NeighbourhoodStoryRequest):
+
+# ---------- API endpoints ----------
+
+
+@app.post("/api/neighbourhood-story", response_model=NeighbourhoodStoryResponse)
+async def neighbourhood_story(req: NeighbourhoodStoryRequest):
     if "address" not in req.data:
-        raise HTTPException(status_code=400, detail="Missing 'address' in data")
+        raise HTTPException(
+            status_code=400,
+            detail="Missing 'address' in data",
+        )
 
     persona = req.persona or "algemeen huishouden"
 
     prompt = f"""
-
 Acteer als een neutrale Nederlandse buurtuitlegger.
 
 Je krijgt gestructureerde data over één klein gebied in Nederland
@@ -106,30 +152,28 @@ Schrijf nu:
 """
 
     try:
-        completion = client.chat.completions.create(
-            model=OPENAI_MODEL,
-            messages=[
-                {"role": "system", "content": "Je bent een behulpzame, neutrale Nederlandse tekstschrijver."},
-                {"role": "user", "content": prompt},
-            ],
+        story = call_openai(prompt)
+    except Exception:
+        # We loggen al in call_openai, hier alleen HTTP-fout terug
+        raise HTTPException(
+            status_code=502,
+            detail="AI-fout bij genereren buurtverhaal",
         )
-        story = completion.choices[0].message.content
-    except Exception as e:
-        print("OpenAI error:", e)
-        raise HTTPException(status_code=500, detail="AI-fout bij genereren buurtverhaal")
 
-    return {"story": story}
+    return NeighbourhoodStoryResponse(story=story)
+
+
+@app.get("/api/health")
+async def health():
+    return {"status": "ok", "env": BACKEND_ENV}
+
 
 # ---------- Static React build ----------
 
 if FRONTEND_DIST.exists():
+    # Dit serveert de frontend build als root
     app.mount(
         "/", StaticFiles(directory=str(FRONTEND_DIST), html=True), name="static"
-
     )
 else:
     print("⚠️ Let op: frontend/dist bestaat niet, alleen API beschikbaar.")
-
-@app.get("/api/health")
-def health():
-    return {"status": "ok"}
