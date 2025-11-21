@@ -18,7 +18,6 @@ const BAG_PAND_URL =
 const CBS_BASE_URL = "https://opendata.cbs.nl/ODataApi/OData/83765NED";
 const CBS_TYPED_URL = `${CBS_BASE_URL}/TypedDataSet`;
 
-// Simple OSM raster style for MapLibre
 const MAP_STYLE_URL = {
   version: 8,
   sources: {
@@ -158,10 +157,30 @@ export default function App() {
           if (rows.length > 0) {
             const row = rows[0];
 
-            const pick = (obj, key) =>
-              Object.prototype.hasOwnProperty.call(obj, key)
-                ? obj[key]
-                : null;
+            const pick = (obj, keys) => {
+              if (Array.isArray(keys)) {
+                for (const key of keys) {
+                  if (
+                    Object.prototype.hasOwnProperty.call(obj, key) &&
+                    obj[key] !== null &&
+                    obj[key] !== undefined
+                  ) {
+                    return obj[key];
+                  }
+                }
+                return null;
+              } else {
+                const key = keys;
+                if (
+                  Object.prototype.hasOwnProperty.call(obj, key) &&
+                  obj[key] !== null &&
+                  obj[key] !== undefined
+                ) {
+                  return obj[key];
+                }
+                return null;
+              }
+            };
 
             const population = pick(row, "AantalInwoners_5");
             const density = pick(row, "Bevolkingsdichtheid_33");
@@ -574,7 +593,7 @@ export default function App() {
                 )}
                 {clusterInfo && (
                   <span className="badge">
-                    Cluster: {clusterInfo.label}
+                    {clusterInfo.label_short} (cluster {clusterInfo.cluster})
                   </span>
                 )}
                 {result.buildingInfo?.bouwjaar && (
@@ -629,9 +648,10 @@ export default function App() {
               </section>
             )}
 
-            {/* Map + cijfers in twee kolommen */}
-            <section className="section two-column">
-              <div className="column">
+            {/* MAP + STATS + AI/ML INSIGHTS */}
+            <section className="section insights-grid">
+              {/* Left: big map */}
+              <div className="insights-map-column">
                 {result.coords && (
                   <div className="map-card">
                     <div ref={mapContainerRef} className="map" />
@@ -642,12 +662,13 @@ export default function App() {
                 )}
               </div>
 
-              <div className="column">
-                <h2>Buurt in één oogopslag</h2>
-                {result.cbsStats ? (
-                  <>
+              {/* Right: stats + AI/ML */}
+              <div className="insights-panel-column">
+                {/* Buurt in één oogopslag */}
+                <div className="panel-block">
+                  <h2>Buurt in één oogopslag</h2>
+                  {result.cbsStats ? (
                     <div className="stat-grid">
-                      {/* Inwoners */}
                       {result.cbsStats.population != null && (
                         <div className="stat-card">
                           <div className="stat-label">Inwoners (totaal)</div>
@@ -660,7 +681,6 @@ export default function App() {
                         </div>
                       )}
 
-                      {/* Bevolkingsdichtheid */}
                       {result.cbsStats.density != null && (
                         <div className="stat-card">
                           <div className="stat-label">Bevolkingsdichtheid</div>
@@ -669,13 +689,12 @@ export default function App() {
                             <span className="small"> / km²</span>
                           </div>
                           <div className="stat-help">
-                            Hogere dichtheid betekent meestal een drukkere wijk met meer
-                            voorzieningen.
+                            Hogere dichtheid betekent meestal een drukkere wijk met
+                            meer voorzieningen.
                           </div>
                         </div>
                       )}
 
-                      {/* 65-plus */}
                       {result.cbsStats.pct65Plus != null && (
                         <div className="stat-card">
                           <div className="stat-label">% 65-plus</div>
@@ -689,172 +708,125 @@ export default function App() {
                         </div>
                       )}
 
-                      {/* Inkomen per persoon met kleur-badge */}
-                      {result.cbsStats.incomePerPerson != null && (() => {
-                        const badge = getIncomeBadge(result.cbsStats.incomePerPerson);
-                        return (
-                          <div className={`stat-card income-${badge.level}`}>
-                            <div className="stat-label">Gem. inkomen per persoon</div>
-                            <div className="stat-value">
-                              € {formatOrNA(result.cbsStats.incomePerPerson * 1000, nf0)}
-                            </div>
-                            <div className="stat-help">{badge.label}</div>
-                          </div>
-                        );
-                      })()}
-
-                      {/* Auto's */}
-                      {result.cbsStats.carsPerHousehold != null && (
+                      {result.cbsStats.incomePerPerson != null && (
                         <div className="stat-card">
-                          <div className="stat-label">Auto’s per huishouden</div>
+                          <div className="stat-label">
+                            Gem. inkomen per persoon (× 1000 €)
+                          </div>
                           <div className="stat-value">
-                            {formatOrNA(result.cbsStats.carsPerHousehold, nf1)}
+                            {formatOrNA(result.cbsStats.incomePerPerson, nf1)}
                           </div>
                           <div className="stat-help">
-                            Gemiddeld aantal personenauto’s per huishouden.
+                            Gemiddeld besteedbaar inkomen per persoon (CBS).
                           </div>
                         </div>
                       )}
 
-                      {/* Voorzieningen (afstand) */}
-                      {result.cbsStats.amenities?.supermarket_km != null && (
+                      {storyAreaHa != null && (
                         <div className="stat-card">
-                          <div className="stat-label">Supermarkt</div>
+                          <div className="stat-label">Oppervlakte pand (ongeveer)</div>
                           <div className="stat-value">
-                            {formatOrNA(result.cbsStats.amenities.supermarket_km, nf1)}
-                            <span className="small"> km</span>
+                            {formatOrNA(storyAreaHa, nf1)}
+                            <span className="small"> ha</span>
                           </div>
                           <div className="stat-help">
-                            Afstand tot een grote supermarkt volgens CBS.
-                          </div>
-                        </div>
-                      )}
-
-                      {result.cbsStats.amenities?.huisarts_km != null && (
-                        <div className="stat-card">
-                          <div className="stat-label">Huisartsenpraktijk</div>
-                          <div className="stat-value">
-                            {formatOrNA(result.cbsStats.amenities.huisarts_km, nf1)}
-                            <span className="small"> km</span>
-                          </div>
-                          <div className="stat-help">
-                            Afstand tot een huisartsenpraktijk.
-                          </div>
-                        </div>
-                      )}
-
-                      {result.cbsStats.amenities?.kinderdagverblijf_km != null && (
-                        <div className="stat-card">
-                          <div className="stat-label">Kinderdagverblijf</div>
-                          <div className="stat-value">
-                            {formatOrNA(result.cbsStats.amenities.kinderdagverblijf_km, nf1)}
-                            <span className="small"> km</span>
-                          </div>
-                          <div className="stat-help">
-                            Afstand tot een kinderdagverblijf.
-                          </div>
-                        </div>
-                      )}
-
-                      {result.cbsStats.amenities?.school_km != null && (
-                        <div className="stat-card">
-                          <div className="stat-label">School</div>
-                          <div className="stat-value">
-                            {formatOrNA(result.cbsStats.amenities.school_km, nf1)}
-                            <span className="small"> km</span>
-                          </div>
-                          <div className="stat-help">
-                            Afstand tot een basisschool.
+                            Berekend met GeoPandas op basis van BAG-geometrie (indicatief).
                           </div>
                         </div>
                       )}
                     </div>
+                  ) : (
+                    <p className="small">Geen CBS-buurtcijfers gevonden.</p>
+                  )}
+                </div>
 
-                    {ageChartOptions && (
-                      <div className="chart-card">
-                        <HighchartsReact
-                          highcharts={Highcharts}
-                          options={ageChartOptions}
-                        />
-                      </div>
-                    )}
+                {/* AI + ML panel */}
+                <div className="panel-block">
+                  <h2>AI & ML-inzichten</h2>
 
-                    {/* Nieuw: inkomensgrafiek */}
-                    {incomeChartOptions && (
-                      <div className="stat-card" style={{ marginTop: "0.75rem" }}>
-                        <div className="stat-label" style={{ marginBottom: "0.25rem" }}>
-                          Inkomen & inkomensverdeling
-                        </div>
-                        <HighchartsReact highcharts={Highcharts} options={incomeChartOptions} />
-                        <p className="small">
-                          Gemiddeld inkomen per inwoner (× 1000 €) en aandeel personen met
-                          laag/hoog inkomen (CBS 83765NED).
-                        </p>
-                      </div>
-                    )}
-                  </>
-
-                ) : (
-                  <p className="small">Geen CBS-buurtcijfers gevonden.</p>
-                )}
-              </div>
-            </section>
-
-            {/* Vergelijkbare buurten (ML) */}
-            <section className="section">
-              <h2>Vergelijkbare buurten (ML)</h2>
-              {mlLoading && <p className="small">ML-model is bezig...</p>}
-              {!mlLoading && similarBuurten && similarBuurten.neighbours?.length > 0 ? (
-                <div className="stat-grid">
-                  {similarBuurten.neighbours.map((b) => (
-                    <div key={b.buurt_code} className="stat-card">
-                      <div className="stat-label small">
-                        {b.buurt_code} • {b.gemeente}
+                  {/* Cluster label (KMeans + LLM) */}
+                  {clusterInfo && (
+                    <div className="stat-card" style={{ marginBottom: "0.5rem" }}>
+                      <div className="stat-label">
+                        Cluster {clusterInfo.cluster}
                       </div>
                       <div className="stat-value">
-                        {b.naam || "Buurt"}{" "}
-                        <span className="small">
-                          (cluster {b.cluster})
-                        </span>
+                        {clusterInfo.label_short}
                       </div>
-                      <div className="stat-help small">
-                        Inwoners:{" "}
-                        {b.population != null ? formatOrNA(b.population, nf0) : "n.v.t."}
-                        {" • "}
-                        Inkomen:{" "}
-                        {b.income_per_person != null
-                          ? `€ ${formatOrNA(b.income_per_person, nf1)}k`
-                          : "n.v.t."}
-                      </div>
+                      {clusterInfo.label_long && (
+                        <div className="stat-help small">
+                          {clusterInfo.label_long}
+                        </div>
+                      )}
                     </div>
-                  ))}
-                </div>
-              ) : (
-                !mlLoading && <p className="small">Geen vergelijkbare buurten gevonden.</p>
-              )}
-            </section>
+                  )}
 
-            {/* AI: Buurtverhaal */}
-            <section className="section">
-              <h2>Buurtverhaal (AI)</h2>
-              <p className="small">
-                Laat een korte beschrijving maken van de buurt op basis van de
-                gegevens hierboven.
-              </p>
-              <div className="form-row" style={{ marginBottom: "0.75rem" }}>
-                <button
-                  type="button"
-                  onClick={() => generateStory("starter")}
-                  disabled={storyLoading}
-                >
-                  {storyLoading ? "AI is bezig..." : "Maak buurtverhaal"}
-                </button>
-              </div>
-              {storyText && (
-                <div className="stat-card story-card">
-                  <ReactMarkdown>{storyText}</ReactMarkdown>
+                  {/* KNN: vergelijkbare buurten */}
+                  {mlLoading && (
+                    <p className="small">ML-modellen laden vergelijkbare buurten...</p>
+                  )}
+                  {!mlLoading &&
+                    similarBuurten?.neighbours &&
+                    similarBuurten.neighbours.length > 0 && (
+                      <div className="stat-card" style={{ marginBottom: "0.5rem" }}>
+                        <div className="stat-label">Vergelijkbare buurten (KNN)</div>
+                        <ul className="small">
+                          {similarBuurten.neighbours.map((b) => (
+                            <li key={b.buurt_code}>
+                              <strong>{b.naam.trim() || b.buurt_code}</strong> –{" "}
+                              {b.gemeente.trim()}{" "}
+                              {b.income_per_person != null && (
+                                <>
+                                  • inkomen: {formatOrNA(b.income_per_person, nf1)}
+                                </>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                  {/* AI-buurtverhaal */}
+                  <p className="small">
+                    Laat een beschrijving maken van de buurt op basis van de cijfers
+                    hierboven en de geometrie van het pand.
+                  </p>
+                  <div className="form-row" style={{ marginBottom: "0.6rem" }}>
+                    <button
+                      type="button"
+                      onClick={() => generateStory("starter")}
+                      disabled={storyLoading}
+                    >
+                      {storyLoading ? "AI is bezig..." : "Maak buurtverhaal"}
+                    </button>
+                  </div>
+
+                  {storyText && (
+                    <div className="stat-card story-card">
+                      <ReactMarkdown>{storyText}</ReactMarkdown>
+                    </div>
+                  )}
+
+                  {/* Charts: leeftijd & inkomen */}
+                  {ageChartOptions && (
+                    <div className="stat-card" style={{ marginTop: "0.6rem" }}>
+                      <HighchartsReact
+                        highcharts={Highcharts}
+                        options={ageChartOptions}
+                      />
+                    </div>
+                  )}
+
+                  {incomeChartOptions && (
+                    <div className="stat-card" style={{ marginTop: "0.6rem" }}>
+                      <HighchartsReact
+                        highcharts={Highcharts}
+                        options={incomeChartOptions}
+                      />
+                    </div>
+                  )}
                 </div>
-              )}
+              </div>
             </section>
           </>
         )}

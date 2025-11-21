@@ -138,7 +138,8 @@ class SimilarBuurtenResponse(BaseModel):
 class ClusterInfoResponse(BaseModel):
     buurt_code: str
     cluster: int
-    label: str
+    label_short: str
+    label_long: str
 
 
 # ---------- Data-analyse helpers (pandas & geopandas) ----------
@@ -469,7 +470,8 @@ async def buurt_cluster(
     return ClusterInfoResponse(
         buurt_code=buurt_code.strip(),
         cluster=cluster_id,
-        label=cluster_info["label_short"],
+        label_short=cluster_info["label_short"],
+        label_long=cluster_info["label_long"],
     )
 
 
