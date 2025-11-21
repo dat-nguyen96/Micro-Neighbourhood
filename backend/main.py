@@ -1,10 +1,10 @@
 # backend/main.py
 import os
 from pathlib import Path
-from typing import Optional, Dict, Any, Tuple, Union
+from typing import Optional, Dict, Any, Tuple, List
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from openai import OpenAI
@@ -13,38 +13,62 @@ from pydantic import BaseModel, Field
 import pandas as pd
 import geopandas as gpd
 from shapely.geometry import shape
-import traceback
+import httpx
 
-print("[BOOT] Importing main.py...")
+from sklearn.preprocessing import StandardScaler
+from sklearn.cluster import KMeans
+from sklearn.neighbors import NearestNeighbors
 
 # ---------- paths & env ----------
 BASE_DIR = Path(__file__).resolve().parent
 FRONTEND_DIST = BASE_DIR.parent / "frontend" / "dist"
-print(f"[BOOT] BASE_DIR={BASE_DIR}")
-print(f"[BOOT] FRONTEND_DIST exists? {FRONTEND_DIST.exists()}")
 
 env_path = BASE_DIR / ".env"
 if env_path.exists():
-    print(f"[BOOT] Loading .env from {env_path}")
     load_dotenv(env_path)
-else:
-    print("[BOOT] No local .env found (this is normal on Railway).")
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 BACKEND_ENV = os.getenv("BACKEND_ENV", "local")  # bv. "local", "production"
 
-if OPENAI_API_KEY:
-    print("[BOOT] OPENAI_API_KEY is present (length =", len(OPENAI_API_KEY), ")")
-else:
-    print(
-        "[BOOT][WARN] OPENAI_API_KEY is NOT set. "
-        "The /api/neighbourhood-story endpoint will return a 500 until you set it."
+if not OPENAI_API_KEY:
+    raise RuntimeError(
+        "OPENAI_API_KEY is niet gezet. "
+        "Zet deze in .env (lokaal) of als Railway environment variable."
     )
 
-client: Optional[OpenAI] = None
-if OPENAI_API_KEY:
-    client = OpenAI(api_key=OPENAI_API_KEY)
+client = OpenAI(api_key=OPENAI_API_KEY)
+
+# ---------- CBS config for ML ----------
+
+CBS_BASE_URL = "https://opendata.cbs.nl/ODataApi/OData/83765NED"
+CBS_TYPED_URL = f"{CBS_BASE_URL}/TypedDataSet"
+
+# Subset van interessante features (allemaal uit jouw voorbeeld)
+FEATURE_COLUMNS = [
+    "AantalInwoners_5",                  # totaal inwoners
+    "Bevolkingsdichtheid_33",           # per km²
+    "GemiddeldInkomenPerInwoner_66",    # x 1000 euro
+    "GemiddeldeHuishoudensgrootte_32",
+    "HuishOnderOfRondSociaalMinimum_73",
+    "HuishoudensMetEenLaagInkomen_72",
+    "PercentageMeergezinswoning_37",
+    "MateVanStedelijkheid_104",
+    "PersonenautoSPerHuishouden_91",
+]
+
+ID_COLUMNS = [
+    "WijkenEnBuurten",   # buurtcode
+    "Gemeentenaam_1",    # gemeentenaam
+    "SoortRegio_2",      # we filteren op 'Buurt'
+]
+
+# Globale in-memory modellen / data (lazy geladen)
+CBS_DF: Optional[pd.DataFrame] = None
+FEATURE_DF: Optional[pd.DataFrame] = None
+SCALER: Optional[StandardScaler] = None
+KMEANS: Optional[KMeans] = None
+KNN: Optional[NearestNeighbors] = None
 
 # ---------- FastAPI app ----------
 
@@ -99,6 +123,27 @@ class NeighbourhoodStoryRequest(BaseModel):
 class NeighbourhoodStoryResponse(BaseModel):
     story: str
     area_ha: Optional[float] = None
+
+
+class SimilarBuurt(BaseModel):
+    buurt_code: str
+    naam: str
+    gemeente: str
+    distance: float
+    cluster: int
+    population: Optional[float] = None
+    income_per_person: Optional[float] = None
+
+
+class SimilarBuurtenResponse(BaseModel):
+    base_buurt_code: str
+    neighbours: List[SimilarBuurt]
+
+
+class ClusterInfoResponse(BaseModel):
+    buurt_code: str
+    cluster: int
+    label: str
 
 
 # ---------- Data-analyse helpers (pandas & geopandas) ----------
@@ -161,6 +206,96 @@ def analyse_neighbourhood_data(data: Dict[str, Any]) -> Tuple[str, Dict[str, Opt
         print("[ANALYSE] No geometry field in data; skipping GeoPandas.")
 
     return "\n".join(summary_lines), metrics
+
+
+# ---------- CBS ML helpers (KMeans + KNN) ----------
+
+
+def _ensure_cbs_models_loaded():
+    """
+    Lazy load van CBS-buurtdata + trainen van scaler, KMeans en KNN.
+    Wordt aangeroepen bij de ML-endpoints.
+    """
+    global CBS_DF, FEATURE_DF, SCALER, KMEANS, KNN
+
+    if CBS_DF is not None and SCALER is not None and KMEANS is not None and KNN is not None:
+        return
+
+    print("[ML] Downloading CBS buurtdata for ML...")
+    with httpx.Client(timeout=30.0) as client:
+        params = {
+            "$filter": "SoortRegio eq 'Buurt'",
+            "$top": "50000",  # genoeg voor alle buurten
+        }
+        resp = client.get(CBS_TYPED_URL, params=params)
+        resp.raise_for_status()
+        data = resp.json()["value"]
+
+    df = pd.DataFrame(data)
+    # Houd alleen relevante kolommen
+    cols = ID_COLUMNS + FEATURE_COLUMNS
+    missing = [c for c in cols if c not in df.columns]
+    if missing:
+        raise RuntimeError(f"Ontbrekende CBS-kolommen: {missing}")
+
+    df = df[cols].copy()
+
+    # Bewaar origin
+    CBS_DF = df
+
+    # Feature-matrix (met NaN -> kolomgemiddelde)
+    feat_df = df[FEATURE_COLUMNS].astype(float)
+    feat_df = feat_df.fillna(feat_df.mean())
+
+    scaler = StandardScaler()
+    X = scaler.fit_transform(feat_df.values)
+
+    # KMeans (aantal clusters kun je tunen)
+    kmeans = KMeans(n_clusters=8, random_state=42, n_init="auto")
+    kmeans.fit(X)
+
+    # NearestNeighbours (KNN)
+    knn = NearestNeighbors(n_neighbors=11, metric="euclidean")  # 1 = jezelf + 10 buren
+    knn.fit(X)
+
+    FEATURE_DF = feat_df
+    SCALER = scaler
+    KMEANS = kmeans
+    KNN = knn
+
+    print("[ML] CBS modellen geladen: "
+          f"{len(df)} buurten, {len(FEATURE_COLUMNS)} features.")
+
+
+def _find_buurt_index(buurt_code: str) -> int:
+    """Zoek index van buurt in CBS_DF op basis van buurtcode."""
+    if CBS_DF is None:
+        raise RuntimeError("CBS_DF is niet geladen.")
+    matches = CBS_DF.index[CBS_DF["WijkenEnBuurten"].str.strip() == buurt_code.strip()]
+    if len(matches) == 0:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Buurtcode {buurt_code} niet gevonden in CBS-data.",
+        )
+    return int(matches[0])
+
+
+def _cluster_label(cluster_id: int) -> str:
+    """
+    Heel simpele naam voor een cluster. Later kun je dit slimmer maken
+    door cluster-centers te analyseren.
+    """
+    names = {
+        0: "Cluster 0 – stedelijk gemengd",
+        1: "Cluster 1 – hoogstedelijk",
+        2: "Cluster 2 – suburbaan",
+        3: "Cluster 3 – dorps / landelijk",
+        4: "Cluster 4 – jong & stedelijk",
+        5: "Cluster 5 – ouder & rustig",
+        6: "Cluster 6 – welvarend",
+        7: "Cluster 7 – lager inkomen",
+    }
+    return names.get(cluster_id, f"Cluster {cluster_id}")
 
 
 # ---------- OpenAI helper ----------
@@ -274,6 +409,87 @@ Schrijf nu:
     return NeighbourhoodStoryResponse(
         story=story,
         area_ha=metrics.get("area_ha"),
+    )
+
+
+@app.get("/api/similar-buurten", response_model=SimilarBuurtenResponse)
+async def similar_buurten(
+    buurt_code: str = Query(..., description="CBS buurtcode, bv. BU05990110"),
+    k: int = Query(5, ge=1, le=10, description="Aantal vergelijkbare buurten"),
+):
+    """
+    ML endpoint: KNN op basis van CBS-features.
+    Geeft k buurten terug die lijken op de opgegeven buurt.
+    """
+    _ensure_cbs_models_loaded()
+    assert CBS_DF is not None and FEATURE_DF is not None
+    assert SCALER is not None and KNN is not None and KMEANS is not None
+
+    idx = _find_buurt_index(buurt_code)
+    x = FEATURE_DF.iloc[idx:idx + 1].values
+    x_scaled = SCALER.transform(x)
+
+    distances, indices = KNN.kneighbors(x_scaled, n_neighbors=k + 1)
+    distances = distances[0]
+    indices = indices[0]
+
+    neighbours: List[SimilarBuurt] = []
+
+    for dist, i in zip(distances, indices):
+        if i == idx:
+            # sla de buurt zelf over
+            continue
+        row = CBS_DF.iloc[i]
+        feat_row = FEATURE_DF.iloc[i]
+        # cluster van deze buurt
+        cluster_id = int(KMEANS.predict(SCALER.transform(feat_row.values.reshape(1, -1)))[0])
+
+        neighbours.append(
+            SimilarBuurt(
+                buurt_code=row["WijkenEnBuurten"].strip(),
+                naam=str(row.get("Codering_3", "")).strip()
+                or row["WijkenEnBuurten"].strip(),
+                gemeente=str(row["Gemeentenaam_1"]).strip(),
+                distance=float(dist),
+                cluster=cluster_id,
+                population=float(feat_row["AantalInwoners_5"])
+                if pd.notna(feat_row["AantalInwoners_5"])
+                else None,
+                income_per_person=float(feat_row["GemiddeldInkomenPerInwoner_66"])
+                if pd.notna(feat_row["GemiddeldInkomenPerInwoner_66"])
+                else None,
+            )
+        )
+        if len(neighbours) >= k:
+            break
+
+    return SimilarBuurtenResponse(
+        base_buurt_code=buurt_code.strip(),
+        neighbours=neighbours,
+    )
+
+
+@app.get("/api/buurt-cluster", response_model=ClusterInfoResponse)
+async def buurt_cluster(
+    buurt_code: str = Query(..., description="CBS buurtcode, bv. BU05990110")
+):
+    """
+    ML endpoint: geeft het KMeans-cluster + simpele label voor een buurt.
+    """
+    _ensure_cbs_models_loaded()
+    assert CBS_DF is not None and FEATURE_DF is not None
+    assert SCALER is not None and KMEANS is not None
+
+    idx = _find_buurt_index(buurt_code)
+    x = FEATURE_DF.iloc[idx:idx + 1].values
+    x_scaled = SCALER.transform(x)
+    cluster_id = int(KMEANS.predict(x_scaled)[0])
+    label = _cluster_label(cluster_id)
+
+    return ClusterInfoResponse(
+        buurt_code=buurt_code.strip(),
+        cluster=cluster_id,
+        label=label,
     )
 
 

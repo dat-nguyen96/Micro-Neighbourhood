@@ -55,6 +55,10 @@ export default function App() {
   const [storyText, setStoryText] = useState("");
   const [storyAreaHa, setStoryAreaHa] = useState(null);
 
+  const [similarBuurten, setSimilarBuurten] = useState(null);
+  const [clusterInfo, setClusterInfo] = useState(null);
+  const [mlLoading, setMlLoading] = useState(false);
+
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
 
@@ -495,6 +499,36 @@ export default function App() {
     };
   }, [result?.coords, result?.geometry]);
 
+  // ML: fetch similar buurten and cluster when we know the buurtCode
+  useEffect(() => {
+    const buurtCode = result?.cbsStats?.buurtCode;
+    if (!buurtCode) {
+      setSimilarBuurten(null);
+      setClusterInfo(null);
+      return;
+    }
+
+    const trimmed = buurtCode.trim();
+    setMlLoading(true);
+
+    Promise.all([
+      fetch(`/api/similar-buurten?buurt_code=${encodeURIComponent(trimmed)}&k=5`)
+        .then((r) => r.ok ? r.json() : Promise.reject(r)),
+      fetch(`/api/buurt-cluster?buurt_code=${encodeURIComponent(trimmed)}`)
+        .then((r) => r.ok ? r.json() : Promise.reject(r)),
+    ])
+      .then(([similarJson, clusterJson]) => {
+        setSimilarBuurten(similarJson);
+        setClusterInfo(clusterJson);
+      })
+      .catch((err) => {
+        console.error("ML endpoints error:", err);
+        setSimilarBuurten(null);
+        setClusterInfo(null);
+      })
+      .finally(() => setMlLoading(false));
+  }, [result?.cbsStats?.buurtCode]);
+
   return (
     <div className="app-shell">
       <header className="app-header">
@@ -536,6 +570,11 @@ export default function App() {
                 {result.cbsStats?.buurtCode && (
                   <span className="badge">
                     CBS buurtcode: {result.cbsStats.buurtCode.trim()}
+                  </span>
+                )}
+                {clusterInfo && (
+                  <span className="badge">
+                    Cluster: {clusterInfo.label}
                   </span>
                 )}
                 {result.buildingInfo?.bouwjaar && (
@@ -759,6 +798,40 @@ export default function App() {
                   <p className="small">Geen CBS-buurtcijfers gevonden.</p>
                 )}
               </div>
+            </section>
+
+            {/* Vergelijkbare buurten (ML) */}
+            <section className="section">
+              <h2>Vergelijkbare buurten (ML)</h2>
+              {mlLoading && <p className="small">ML-model is bezig...</p>}
+              {!mlLoading && similarBuurten && similarBuurten.neighbours?.length > 0 ? (
+                <div className="stat-grid">
+                  {similarBuurten.neighbours.map((b) => (
+                    <div key={b.buurt_code} className="stat-card">
+                      <div className="stat-label small">
+                        {b.buurt_code} • {b.gemeente}
+                      </div>
+                      <div className="stat-value">
+                        {b.naam || "Buurt"}{" "}
+                        <span className="small">
+                          (cluster {b.cluster})
+                        </span>
+                      </div>
+                      <div className="stat-help small">
+                        Inwoners:{" "}
+                        {b.population != null ? formatOrNA(b.population, nf0) : "n.v.t."}
+                        {" • "}
+                        Inkomen:{" "}
+                        {b.income_per_person != null
+                          ? `€ ${formatOrNA(b.income_per_person, nf1)}k`
+                          : "n.v.t."}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                !mlLoading && <p className="small">Geen vergelijkbare buurten gevonden.</p>
+              )}
             </section>
 
             {/* AI: Buurtverhaal */}
