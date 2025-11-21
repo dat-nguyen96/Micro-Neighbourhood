@@ -196,6 +196,14 @@ export default function App() {
               "k_20HuishoudensMetHoogsteInkomen_71"
             );
 
+            // extra: inkomensverdeling (personen)
+            const shareLowIncomePersons = pick(row, [
+              "k_40PersonenMetLaagsteInkomen_67",
+            ]);
+            const shareHighIncomePersons = pick(row, [
+              "k_20PersonenMetHoogsteInkomen_68",
+            ]);
+
             // Auto's & mobiliteit
             const carsPerHousehold = pick(
               row,
@@ -223,6 +231,8 @@ export default function App() {
               incomePerReceiver,
               pctLowIncomeHouseholds,
               pctHighIncomeHouseholds,
+              shareLowIncomePersons,
+              shareHighIncomePersons,
               carsPerHousehold,
               totalCars,
               ageGroups,
@@ -345,6 +355,70 @@ export default function App() {
           credits: { enabled: false },
         }
       : null;
+
+  const incomeChartOptions = React.useMemo(() => {
+    if (!result?.cbsStats?.incomePerPerson) return null;
+
+    const stats = result.cbsStats;
+    const income = Number(stats.incomePerPerson); // in duizend euro (CBS is usually x 1000)
+    const low = stats.shareLowIncomePersons ?? null;
+    const high = stats.shareHighIncomePersons ?? null;
+
+    const categories = [];
+    const data = [];
+
+    categories.push("Gem. inkomen (x 1000 €)");
+    data.push(income);
+
+    if (low !== null) {
+      categories.push("Laagste 40% (%)");
+      data.push(low);
+    }
+    if (high !== null) {
+      categories.push("Hoogste 20% (%)");
+      data.push(high);
+    }
+
+    return {
+      chart: {
+        type: "column",
+        backgroundColor: "transparent",
+        height: 260,
+      },
+      title: { text: null },
+      xAxis: {
+        categories,
+        labels: { style: { color: "#e5e7eb", fontSize: "11px" } },
+      },
+      yAxis: {
+        min: 0,
+        title: { text: null },
+        labels: { style: { color: "#9ca3af" } },
+        gridLineColor: "rgba(55,65,81,0.5)",
+      },
+      legend: { enabled: false },
+      credits: { enabled: false },
+      series: [
+        {
+          name: "Inkomen / verdeling",
+          data,
+          borderRadius: 3,
+        },
+      ],
+      tooltip: {
+        backgroundColor: "#020617",
+        borderColor: "#4b5563",
+        style: { color: "#e5e7eb", fontSize: "11px" },
+        formatter: function () {
+          const key = this.key;
+          if (key.includes("Gem. inkomen")) {
+            return `${key}: ${this.y.toFixed(1)} × 1000 €`;
+          }
+          return `${key}: ${this.y.toFixed(1)} %`;
+        },
+      },
+    };
+  }, [result?.cbsStats]);
 
   // MapLibre: render when coords/geometry change
   useEffect(() => {
@@ -583,7 +657,7 @@ export default function App() {
                           <div className={`stat-card income-${badge.level}`}>
                             <div className="stat-label">Gem. inkomen per persoon</div>
                             <div className="stat-value">
-                              € {formatOrNA(result.cbsStats.incomePerPerson, nf0)}
+                              € {formatOrNA(result.cbsStats.incomePerPerson * 1000, nf0)}
                             </div>
                             <div className="stat-help">{badge.label}</div>
                           </div>
@@ -663,6 +737,20 @@ export default function App() {
                           highcharts={Highcharts}
                           options={ageChartOptions}
                         />
+                      </div>
+                    )}
+
+                    {/* Nieuw: inkomensgrafiek */}
+                    {incomeChartOptions && (
+                      <div className="stat-card" style={{ marginTop: "0.75rem" }}>
+                        <div className="stat-label" style={{ marginBottom: "0.25rem" }}>
+                          Inkomen & inkomensverdeling
+                        </div>
+                        <HighchartsReact highcharts={Highcharts} options={incomeChartOptions} />
+                        <p className="small">
+                          Gemiddeld inkomen per inwoner (× 1000 €) en aandeel personen met
+                          laag/hoog inkomen (CBS 83765NED).
+                        </p>
                       </div>
                     )}
                   </>
