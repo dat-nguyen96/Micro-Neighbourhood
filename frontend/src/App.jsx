@@ -1,28 +1,35 @@
 // src/App.jsx
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
-import { MapContainer, TileLayer, Marker, Popup, GeoJSON } from "react-leaflet";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
+import maplibregl from "maplibre-gl";
+import "maplibre-gl/dist/maplibre-gl.css";
 
 const PDOK_FREE_URL =
   "https://api.pdok.nl/bzk/locatieserver/search/v3_1/free";
 const BAG_PAND_URL =
   "https://api.pdok.nl/lv/bag/ogc/v1-demo/collections/pand/items";
-const CBS_TABLE_URL =
-  "https://datasets.cbs.nl/odata/v1/CBS/83765NED/Observations";
 
-const markerIcon = new L.Icon({
-  iconUrl:
-    "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-  shadowUrl:
-    "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41],
-});
+// CBS Kerncijfers wijken en buurten 2017 (83765NED)
+const CBS_BASE_URL = "https://opendata.cbs.nl/ODataApi/OData/83765NED";
+const CBS_TYPED_URL = `${CBS_BASE_URL}/TypedDataSet`;
+
+const MAP_STYLE_URL = {
+  version: 8,
+  sources: {
+    'osm': {
+      type: 'raster',
+      tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+      tileSize: 256,
+      attribution: '© OpenStreetMap contributors'
+    }
+  },
+  layers: [{
+    id: 'osm',
+    type: 'raster',
+    source: 'osm'
+  }]
+};
 
 const nf0 = new Intl.NumberFormat("nl-NL", {
   maximumFractionDigits: 0,
@@ -40,6 +47,9 @@ export default function App() {
   const [storyLoading, setStoryLoading] = useState(false);
   const [storyText, setStoryText] = useState("");
   const [storyAreaHa, setStoryAreaHa] = useState(null);
+
+  const mapContainerRef = useRef(null);
+  const mapRef = useRef(null);
 
   async function handleSearch(e) {
     e.preventDefault();
@@ -120,33 +130,64 @@ export default function App() {
         }
       }
 
-      // 3) CBS kerncijfers
+      // 3) CBS kerncijfers (Kerncijfers wijken en buurten 2017 - 83765NED)
       const buurtCode =
         doc.buurtcode || doc.wijkcode || doc.gemeentecode || null;
 
       let cbsStats = null;
       if (buurtCode) {
-        // LET OP: nu alleen T001036 (totaal inwoners).
-        // Andere variabelen (dichtheid, %65+) moeten nog via extra Measure-codes worden opgezocht.
         const filter = encodeURIComponent(
-          `WijkenEnBuurten eq '${buurtCode}' and Measure eq 'T001036'`
+          `WijkenEnBuurten eq '${buurtCode}'`
         );
-        const cbsUrl = `${CBS_TABLE_URL}?$filter=${filter}&$top=5`;
+        const cbsUrl = `${CBS_TYPED_URL}?$filter=${filter}&$top=1`;
         const cbsResp = await fetch(cbsUrl);
         if (cbsResp.ok) {
           const cbsData = await cbsResp.json();
-          const rows = cbsData.value || cbsData.Observations || [];
-          const popRow = rows[0];
+          const rows = cbsData.value || [];
+          if (rows.length > 0) {
+            const row = rows[0];
 
-          cbsStats = {
-            buurtCode,
-            population: popRow ? popRow.Value : null,
-            density: null, // TODO: extra Measure-code
-            pct65Plus: null, // TODO: extra Measure-code
-            incomePerPerson: null, // TODO: extra Measure-code
-          };
+            // Helper: probeer meerdere mogelijke sleutel-namen
+            const pick = (obj, keys) => {
+              for (const key of keys) {
+                if (
+                  Object.prototype.hasOwnProperty.call(obj, key) &&
+                  obj[key] !== null &&
+                  obj[key] !== undefined
+                ) {
+                  return obj[key];
+                }
+              }
+              return null;
+            };
 
-          console.log("CBS rows for buurt:", buurtCode, rows);
+            const population = pick(row, [
+              "AantalInwoners_5",
+            ]);
+            const density = pick(row, [
+              "Bevolkingsdichtheid_33",
+            ]);
+            // Calculate 65+ percentage from age groups
+            const totalPopulation = row.AantalInwoners_5;
+            const over65 = row.k_65JaarOfOuder_12;
+            const pct65Plus = totalPopulation && over65 ?
+              Math.round((over65 / totalPopulation) * 100 * 10) / 10 : null;
+
+            const incomePerPerson = pick(row, [
+              "GemiddeldInkomenPerInwoner_66",
+            ]);
+
+            cbsStats = {
+              buurtCode,
+              population,
+              density,
+              pct65Plus,
+              incomePerPerson,
+            };
+
+            // Superhandig om 1x te inspecteren in de browser console:
+            console.log("CBS row for buurt:", buurtCode, row);
+          }
         }
       }
 
@@ -209,6 +250,85 @@ export default function App() {
     }
     return formatter.format(Number(value));
   }
+
+  useEffect(() => {
+    if (!mapContainerRef.current || !result?.coords) {
+      return;
+    }
+
+    // Ruim oude map op als we een nieuwe maken
+    if (mapRef.current) {
+      mapRef.current.remove();
+      mapRef.current = null;
+    }
+
+    const [lat, lon] = result.coords;
+    const center = [lon, lat]; // maplibre = [lon, lat]
+
+    const map = new maplibregl.Map({
+      container: mapContainerRef.current,
+      style: MAP_STYLE_URL,
+      center,
+      zoom: 17,
+    });
+
+    map.addControl(new maplibregl.NavigationControl(), "top-right");
+
+    // Marker op het adres
+    new maplibregl.Marker({ color: "#22c55e" })
+      .setLngLat(center)
+      .addTo(map);
+
+    // Teken BAG-polygon als we een geometry hebben
+    map.on("load", () => {
+      if (result.geometry) {
+        const feature = {
+          type: "Feature",
+          geometry: result.geometry,
+          properties: {},
+        };
+
+        if (!map.getSource("building")) {
+          map.addSource("building", {
+            type: "geojson",
+            data: feature,
+          });
+
+          map.addLayer({
+            id: "building-fill",
+            type: "fill",
+            source: "building",
+            paint: {
+              "fill-color": "#22c55e",
+              "fill-opacity": 0.3,
+            },
+          });
+
+          map.addLayer({
+            id: "building-outline",
+            type: "line",
+            source: "building",
+            paint: {
+              "line-color": "#22c55e",
+              "line-width": 2,
+            },
+          });
+        } else {
+          const src = map.getSource("building");
+          src.setData(feature);
+        }
+      }
+    });
+
+    mapRef.current = map;
+
+    return () => {
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+      }
+    };
+  }, [result?.coords, result?.geometry]);
 
   return (
     <div className="app-shell">
@@ -310,35 +430,9 @@ export default function App() {
               <div className="column">
                 {result.coords && (
                   <div className="map-card">
-                    <MapContainer
-                      center={result.coords}
-                      zoom={18}
-                      scrollWheelZoom={false}
-                      className="map"
-                    >
-                      <TileLayer
-                        attribution='&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> bijdragers'
-                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                      />
-                      <Marker position={result.coords} icon={markerIcon}>
-                        <Popup>{result.address}</Popup>
-                      </Marker>
-
-                      {/* BAG pand-geometrie tekenen als polygon */}
-                      {result.geometry && (
-                        <GeoJSON
-                          data={result.geometry}
-                          style={{
-                            weight: 2,
-                            color: "#22c55e",
-                            fillOpacity: 0.2,
-                          }}
-                        />
-                      )}
-                    </MapContainer>
+                    <div ref={mapContainerRef} className="map" />
                     <p className="small">
-                      Benadering van de locatie en pandvorm. Geen juridisch
-                      kaartmateriaal.
+                      Benadering van de locatie. Geen juridisch kaartmateriaal.
                     </p>
                   </div>
                 )}
