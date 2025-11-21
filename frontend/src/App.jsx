@@ -126,6 +126,8 @@ export default function App() {
 
       let cbsStats = null;
       if (buurtCode) {
+        // LET OP: nu alleen T001036 (totaal inwoners).
+        // Andere variabelen (dichtheid, %65+) moeten nog via extra Measure-codes worden opgezocht.
         const filter = encodeURIComponent(
           `WijkenEnBuurten eq '${buurtCode}' and Measure eq 'T001036'`
         );
@@ -139,9 +141,9 @@ export default function App() {
           cbsStats = {
             buurtCode,
             population: popRow ? popRow.Value : null,
-            density: null, // TODO: later koppelen aan juiste CBS dataset
-            pct65Plus: null, // TODO: later koppelen aan juiste CBS dataset
-            incomePerPerson: null, // TODO: later koppelen aan juiste CBS dataset
+            density: null, // TODO: extra Measure-code
+            pct65Plus: null, // TODO: extra Measure-code
+            incomePerPerson: null, // TODO: extra Measure-code
           };
 
           console.log("CBS rows for buurt:", buurtCode, rows);
@@ -322,19 +324,20 @@ export default function App() {
                         <Popup>{result.address}</Popup>
                       </Marker>
 
-                      {/* BAG pand polygon als overlay (indien beschikbaar) */}
+                      {/* BAG pand-geometrie tekenen als polygon */}
                       {result.geometry && (
                         <GeoJSON
                           data={result.geometry}
-                          style={() => ({
+                          style={{
                             weight: 2,
-                            fillOpacity: 0.25,
-                          })}
+                            color: "#22c55e",
+                            fillOpacity: 0.2,
+                          }}
                         />
                       )}
                     </MapContainer>
                     <p className="small">
-                      Benadering van de locatie en gebouwcontour. Geen juridisch
+                      Benadering van de locatie en pandvorm. Geen juridisch
                       kaartmateriaal.
                     </p>
                   </div>
@@ -352,7 +355,7 @@ export default function App() {
                           {formatOrNA(result.cbsStats.population, nf0)}
                         </div>
                         <div className="stat-help">
-                          Hoeveel mensen er in de buurt wonen (CBS data).
+                          Hoeveel mensen er in de buurt wonen (CBS-data).
                         </div>
                       </div>
                     )}
@@ -365,7 +368,8 @@ export default function App() {
                           <span className="small"> ha</span>
                         </div>
                         <div className="stat-help">
-                          Berekend op basis van BAG-geometrie (indicatief).
+                          Berekend met GeoPandas op basis van BAG-geometrie
+                          (indicatief).
                         </div>
                       </div>
                     )}

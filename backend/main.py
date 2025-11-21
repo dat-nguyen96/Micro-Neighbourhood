@@ -92,7 +92,7 @@ class NeighbourhoodStoryResponse(BaseModel):
 # ---------- Data-analyse helpers (pandas & geopandas) ----------
 
 
-def analyse_neighbourhood_data(data: Dict[str, Any]) -> Tuple[str, Dict[str, float]]:
+def analyse_neighbourhood_data(data: Dict[str, Any]) -> Tuple[str, Dict[str, Optional[float]]]:
     """
     Gebruik pandas/geopandas om een compacte samenvatting van de data te maken
     voor de LLM + enkele numerieke metrics voor de frontend (zoals oppervlakte).
@@ -113,7 +113,7 @@ def analyse_neighbourhood_data(data: Dict[str, Any]) -> Tuple[str, Dict[str, flo
         summary_lines.append("Geen numerieke indicatoren gevonden in de data.")
 
     # 2) Geometrie / oppervlakte / centroid (optioneel)
-    if "geometry" in data:
+    if "geometry" in data and data["geometry"]:
         try:
             geom = shape(data["geometry"])  # verwacht GeoJSON-achtige dict
             gdf = gpd.GeoDataFrame(df, geometry=[geom], crs="EPSG:4326")
