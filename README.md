@@ -4,7 +4,7 @@
 
 **In één scherm:** adres, pand, buurtcijfers, AI-buurtverhaal, cluster classificatie en vergelijkbare buurten via machine learning!
 
-Een moderne webapp die Nederlandse wijken analyseert met PDOK adressen, CBS demografische data, KMeans clustering van alle 5000+ buurten, KNN buurtvergelijking en AI-gestuurde verhalen.
+Een moderne webapp die Nederlandse wijken analyseert met PDOK adressen, CBS demografische data, KMeans clustering van alle 5000+ buurten, KNN buurtvergelijking en AI-gestuurde verhalen verrijkt met ML-context.
 
 ## ✨ Features
 
@@ -26,15 +26,17 @@ Een moderne webapp die Nederlandse wijken analyseert met PDOK adressen, CBS demo
 - Moderne state-of-the-art mapping experience
 
 ### 🤖 AI & Machine Learning
-- **OpenAI GPT-4 integratie** voor buurtbeschrijvingen
+- **OpenAI GPT-4 integratie** voor buurtbeschrijvingen met ML-context
 - **KMeans clustering** van alle Nederlandse buurten (8 clusters)
 - **KNN recommender** voor vergelijkbare buurten
 - **LLM-gegenereerde labels** voor cluster interpretatie
+- **AI verhalen verrijkt met cluster data** voor diepere inzichten
 - Persoonlijke verhalen + data-driven inzichten
 
 ### 📈 Data Visualisaties
 - **Leeftijdsverdelingscharts** (Highcharts)
 - **Inkomensverdelingsanalyse** (Highcharts)
+- **PCA scatter plot** voor ML-ruimte visualisatie
 - **Cluster classificatie** met begrijpelijke labels
 - **Vergelijkbare buurten lijst** met bevolkingsdata
 
@@ -42,7 +44,7 @@ Een moderne webapp die Nederlandse wijken analyseert met PDOK adressen, CBS demo
 
 ### Frontend
 - React 18 - Moderne UI componenten
-- Vite - Snelle development server en build tool
+- Vite - Snelle development server met proxy configuratie
 - MapLibre GL - Moderne interactieve kaarten
 - Highcharts - Professionele data visualisaties
 - React Markdown - Mooie AI content rendering
@@ -105,10 +107,12 @@ Een moderne webapp die Nederlandse wijken analyseert met PDOK adressen, CBS demo
 
 5. **Open:** http://localhost:8000
 
+**Development Note:** Frontend gebruikt Vite proxy om API calls naar backend te routeren.
+
 ## API Endpoints
 
 ### POST /api/neighbourhood-story
-Genereert een AI buurtbeschrijving.
+Genereert een AI buurtbeschrijving verrijkt met ML-context.
 
 Request:
 ```json
@@ -116,11 +120,20 @@ Request:
   "data": {
     "address": "Damrak 1, Amsterdam",
     "buildingInfo": {...},
-    "cbsStats": {...}
+    "cbsStats": {...},
+    "clusterInfo": {
+      "label": "Jong & stedelijk",
+      "label_long": "Drukke binnenstad met veel jonge volwassenen..."
+    },
+    "similarBuurten": {
+      "neighbours": [...]
+    }
   },
   "persona": "algemeen huishouden"
 }
 ```
+
+**Nieuwe feature:** Gebruikt cluster classificatie en vergelijkbare buurten voor contextrijke verhalen.
 
 ### GET /api/similar-buurten
 Vindt vergelijkbare buurten via KNN machine learning.
@@ -128,6 +141,31 @@ Vindt vergelijkbare buurten via KNN machine learning.
 Parameters:
 - `buurt_code`: CBS buurtcode (bijv. BU05990110)
 - `k`: Aantal resultaten (1-10)
+
+Response:
+```json
+{
+  "base_buurt_code": "BU05990110",
+  "base_cluster_label_short": "Jong & stedelijk",
+  "base_cluster_label_long": "Drukke binnenstad met veel jonge volwassenen...",
+  "base_pca_x": 1.299,
+  "base_pca_y": 1.779,
+  "neighbours": [
+    {
+      "buurt_code": "BU03630000",
+      "naam": "Amsterdam Centrum",
+      "gemeente": "Amsterdam",
+      "distance": 0.15,
+      "cluster": 3,
+      "cluster_label_short": "Jong & stedelijk",
+      "population": 12500,
+      "income_per_person": 42.5,
+      "pca_x": 1.245,
+      "pca_y": 1.812
+    }
+  ]
+}
+```
 
 ### GET /api/buurt-cluster
 Geeft cluster informatie voor een buurt.
@@ -140,7 +178,7 @@ Response:
 {
   "buurt_code": "BU05990110",
   "cluster": 3,
-  "label_short": "jong & stedelijk",
+  "label": "Jong & stedelijk",
   "label_long": "Drukke binnenstad met veel jonge volwassenen..."
 }
 ```
@@ -152,9 +190,14 @@ Health check endpoint.
 
 **🌐 URL:** [micro-neighbourhood-production-4237.up.railway.app](https://micro-neighbourhood-production-4237.up.railway.app)
 
-**📅 Laatste update:** November 2025
+**📅 Laatste update:** December 2025
 
-**✨ Wat is nieuw:** Volledige ML integratie met KNN buurtvergelijking en KMeans clustering!
+**✨ Laatste updates:**
+- AI verhalen verrijkt met cluster context en vergelijkbare buurten
+- PCA visualisatie verplaatst onder de kaart voor betere layout
+- Cluster labels met hoofdletters voor professionele uitstraling
+- Vite proxy configuratie voor naadloze lokale development
+- Uitgebreide API responses met ML metadata en PCA coordinaten
 
 ### Docker Deployment op Railway
 
@@ -216,3 +259,5 @@ De applicatie gebruikt Docker voor consistente deployment:
    ```
 
 6. **Open:** http://localhost:8000
+
+**Development Setup:** Vite proxy routes `/api/*` requests to backend automatically.
