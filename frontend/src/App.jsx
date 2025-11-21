@@ -273,6 +273,7 @@ export default function App() {
     });
 
     map.addControl(new maplibregl.NavigationControl(), "top-right");
+    map.addControl(new maplibregl.ScaleControl({ maxWidth: 120, unit: "metric" }), "bottom-left");
 
     // Marker op het adres
     new maplibregl.Marker({ color: "#22c55e" })
