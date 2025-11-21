@@ -13,35 +13,44 @@ from pydantic import BaseModel, Field
 import pandas as pd
 import geopandas as gpd
 from shapely.geometry import shape
+import traceback
+
+print("[BOOT] Importing main.py...")
 
 # ---------- paths & env ----------
 BASE_DIR = Path(__file__).resolve().parent
 FRONTEND_DIST = BASE_DIR.parent / "frontend" / "dist"
+print(f"[BOOT] BASE_DIR={BASE_DIR}")
+print(f"[BOOT] FRONTEND_DIST exists? {FRONTEND_DIST.exists()}")
 
 env_path = BASE_DIR / ".env"
 if env_path.exists():
+    print(f"[BOOT] Loading .env from {env_path}")
     load_dotenv(env_path)
+else:
+    print("[BOOT] No local .env found (this is normal on Railway).")
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 BACKEND_ENV = os.getenv("BACKEND_ENV", "local")  # bv. "local", "production"
 
-# Maak client optioneel; geen harde crash bij import
+if OPENAI_API_KEY:
+    print("[BOOT] OPENAI_API_KEY is present (length =", len(OPENAI_API_KEY), ")")
+else:
+    print(
+        "[BOOT][WARN] OPENAI_API_KEY is NOT set. "
+        "The /api/neighbourhood-story endpoint will return a 500 until you set it."
+    )
+
 client: Optional[OpenAI] = None
 if OPENAI_API_KEY:
     client = OpenAI(api_key=OPENAI_API_KEY)
-else:
-    # Niet crashen; alleen een waarschuwing loggen
-    print(
-        "⚠️  OPENAI_API_KEY is niet gezet. "
-        "AI-endpoints zullen een fout geven totdat deze env var is geconfigureerd."
-    )
 
 # ---------- FastAPI app ----------
 
 app = FastAPI(
     title="Neighbourhood Explorer API",
-    version="0.3.0",
+    version="0.3.1",
     description="API voor NL buurtverhalen met AI, pandas & geopandas.",
 )
 
@@ -100,13 +109,16 @@ def analyse_neighbourhood_data(data: Dict[str, Any]) -> Tuple[str, Dict[str, Opt
     Gebruik pandas/geopandas om een compacte samenvatting van de data te maken
     voor de LLM + enkele numerieke metrics voor de frontend (zoals oppervlakte).
     """
+    print("[ANALYSE] Start analyse_neighbourhood_data")
     df = pd.json_normalize(data)
+    print("[ANALYSE] Data columns:", list(df.columns))
 
     summary_lines: list[str] = []
-    metrics: Dict[str, float] = {"area_ha": None}
+    metrics: Dict[str, Optional[float]] = {"area_ha": None}
 
     # 1) Numerieke indicatoren
     numeric_cols = df.select_dtypes(include="number").columns.tolist()
+    print("[ANALYSE] Numeric columns:", numeric_cols)
     if numeric_cols:
         summary_lines.append("Enkele numerieke indicatoren uit de data:")
         for col in numeric_cols[:10]:
@@ -117,6 +129,7 @@ def analyse_neighbourhood_data(data: Dict[str, Any]) -> Tuple[str, Dict[str, Opt
 
     # 2) Geometrie / oppervlakte / centroid (optioneel)
     if "geometry" in data and data["geometry"]:
+        print("[ANALYSE] Geometry key present, attempting GeoPandas analysis...")
         try:
             geom = shape(data["geometry"])  # verwacht GeoJSON-achtige dict
             gdf = gpd.GeoDataFrame(df, geometry=[geom], crs="EPSG:4326")
@@ -127,6 +140,7 @@ def analyse_neighbourhood_data(data: Dict[str, Any]) -> Tuple[str, Dict[str, Opt
             area_ha = area_m2 / 10_000
             metrics["area_ha"] = area_ha
             summary_lines.append(f"Benaderde oppervlakte: {area_ha:.1f} hectare.")
+            print(f"[ANALYSE] Computed area_ha={area_ha:.3f}")
 
             # Centroid terug in WGS84
             centroid = gdf.to_crs(4326).geometry.iloc[0].centroid
@@ -134,9 +148,17 @@ def analyse_neighbourhood_data(data: Dict[str, Any]) -> Tuple[str, Dict[str, Opt
                 f"Ongeveer centrum op (lat, lon): "
                 f"{centroid.y:.5f}, {centroid.x:.5f}."
             )
+            print(
+                f"[ANALYSE] Centroid lat/lon = {centroid.y:.5f}, {centroid.x:.5f}"
+            )
         except Exception as exc:
-            print("Geometrie-analyse mislukt:", repr(exc))
-            summary_lines.append("Geometrie aanwezig maar kon niet worden geanalyseerd.")
+            print("[ANALYSE][ERROR] Geometrie-analyse mislukt:", repr(exc))
+            traceback.print_exc()
+            summary_lines.append(
+                "Geometrie aanwezig maar kon niet worden geanalyseerd."
+            )
+    else:
+        print("[ANALYSE] No geometry field in data; skipping GeoPandas.")
 
     return "\n".join(summary_lines), metrics
 
@@ -149,10 +171,10 @@ def call_openai(prompt: str, max_tokens: int = 800) -> str:
     Eenvoudige helper om een chat completion aan te roepen.
     Gooit een exception door bij fouten, zodat de endpoint dat kan afhandelen.
     """
-    if client is None:
-        # Duidelijke fout als iemand de endpoint aanroept zonder key
-        raise RuntimeError("OPENAI_API_KEY ontbreekt; AI kan niet worden aangeroepen.")
+    if not client:
+        raise RuntimeError("OpenAI-client niet geconfigureerd (geen API key).")
 
+    print("[OPENAI] Calling model:", OPENAI_MODEL)
     try:
         completion = client.chat.completions.create(
             model=OPENAI_MODEL,
@@ -172,10 +194,12 @@ def call_openai(prompt: str, max_tokens: int = 800) -> str:
             max_tokens=max_tokens,
         )
     except Exception as exc:
-        print("OpenAI fout:", repr(exc))
+        print("[OPENAI][ERROR]", repr(exc))
+        traceback.print_exc()
         raise
 
     content = completion.choices[0].message.content
+    print("[OPENAI] Received completion (length", len(content or ""), ")")
     return content or ""
 
 
@@ -184,10 +208,22 @@ def call_openai(prompt: str, max_tokens: int = 800) -> str:
 
 @app.post("/api/neighbourhood-story", response_model=NeighbourhoodStoryResponse)
 async def neighbourhood_story(req: NeighbourhoodStoryRequest):
+    print("[API] /api/neighbourhood-story called")
+    print("[API] persona =", req.persona)
+    print("[API] keys in data:", list(req.data.keys()))
+
     if "address" not in req.data:
+        print("[API][ERROR] Missing address in data")
         raise HTTPException(
             status_code=400,
             detail="Missing 'address' in data",
+        )
+
+    if not client:
+        print("[API][ERROR] OpenAI client not configured")
+        raise HTTPException(
+            status_code=500,
+            detail="OpenAI API key ontbreekt op de server.",
         )
 
     persona = req.persona or "algemeen huishouden"
@@ -227,15 +263,14 @@ Schrijf nu:
 
     try:
         story = call_openai(prompt)
-    except RuntimeError as e:
-        # Specifiek voor ontbrekende key -> 500 met duidelijke boodschap
-        raise HTTPException(status_code=500, detail=str(e))
     except Exception:
+        print("[API][ERROR] call_openai failed")
         raise HTTPException(
             status_code=502,
             detail="AI-fout bij genereren buurtverhaal",
         )
 
+    print("[API] Returning story + area_ha:", metrics.get("area_ha"))
     return NeighbourhoodStoryResponse(
         story=story,
         area_ha=metrics.get("area_ha"),
@@ -244,14 +279,29 @@ Schrijf nu:
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "env": BACKEND_ENV}
+    print("[API] /api/health called")
+    return {
+        "status": "ok",
+        "env": BACKEND_ENV,
+        "has_openai_key": bool(OPENAI_API_KEY),
+    }
+
+
+# ---------- Startup hook ----------
+
+
+@app.on_event("startup")
+async def on_startup():
+    print("[STARTUP] FastAPI startup complete.")
+    print("[STARTUP] FRONTEND_DIST exists?", FRONTEND_DIST.exists())
 
 
 # ---------- Static React build ----------
 
 if FRONTEND_DIST.exists():
+    print("[BOOT] Mounting static frontend at /")
     app.mount(
         "/", StaticFiles(directory=str(FRONTEND_DIST), html=True), name="static"
     )
 else:
-    print("⚠️ Let op: frontend/dist bestaat niet, alleen API beschikbaar.")
+    print("[BOOT][WARN] frontend/dist bestaat niet, alleen API beschikbaar.")
