@@ -122,24 +122,31 @@ class NeighbourhoodStoryResponse(BaseModel):
 
 class SimilarBuurt(BaseModel):
     buurt_code: str
-    naam: str
+    naam: Optional[str] = None
     gemeente: str
     distance: float
     cluster: int
+    cluster_label_short: str
     population: Optional[float] = None
     income_per_person: Optional[float] = None
+    pca_x: Optional[float] = None
+    pca_y: Optional[float] = None
 
 
 class SimilarBuurtenResponse(BaseModel):
     base_buurt_code: str
+    base_cluster_label_short: Optional[str] = None
+    base_cluster_label_long: Optional[str] = None
+    base_pca_x: Optional[float] = None
+    base_pca_y: Optional[float] = None
     neighbours: List[SimilarBuurt]
 
 
 class ClusterInfoResponse(BaseModel):
     buurt_code: str
     cluster: int
-    label_short: str
-    label_long: str
+    label: str          # korte label (voor badge)
+    label_long: str     # lange uitleg (voor panel)
 
 
 # ---------- Data-analyse helpers (pandas & geopandas) ----------
@@ -402,15 +409,13 @@ async def similar_buurten(
     buurt_code: str = Query(..., description="CBS buurtcode, bv. BU05990110"),
     k: int = Query(5, ge=1, le=10, description="Aantal vergelijkbare buurten"),
 ):
-    """
-    ML endpoint: KNN op basis van precomputed CBS-features.
-    Geeft k buurten terug die lijken op de opgegeven buurt.
-    """
     _ensure_cbs_data_loaded()
     assert CBS_DF is not None and FEATURE_DF is not None
     assert SCALER is not None and KNN is not None
 
     idx = _find_buurt_index(buurt_code)
+    base_row = CBS_DF.iloc[idx]
+
     x = FEATURE_DF.iloc[idx:idx + 1].values
     x_scaled = SCALER.transform(x)
 
@@ -422,32 +427,37 @@ async def similar_buurten(
 
     for dist, i in zip(distances, indices):
         if i == idx:
-            # sla de buurt zelf over
-            continue
+            continue  # sla de buurt zelf over
+
         row = CBS_DF.iloc[i]
         feat_row = FEATURE_DF.iloc[i]
 
         neighbours.append(
             SimilarBuurt(
-                buurt_code=row["WijkenEnBuurten"].strip(),
+                buurt_code=str(row["WijkenEnBuurten"]).strip(),
                 naam=str(row.get("Codering_3", "")).strip()
-                or row["WijkenEnBuurten"].strip(),
+                or str(row["WijkenEnBuurten"]).strip(),
                 gemeente=str(row["Gemeentenaam_1"]).strip(),
                 distance=float(dist),
                 cluster=int(row["cluster_id"]),
+                cluster_label_short=str(row.get("cluster_label_short", f"Cluster {int(row['cluster_id'])}")),
                 population=float(feat_row["AantalInwoners_5"])
-                if pd.notna(feat_row["AantalInwoners_5"])
-                else None,
+                if pd.notna(feat_row["AantalInwoners_5"]) else None,
                 income_per_person=float(feat_row["GemiddeldInkomenPerInwoner_66"])
-                if pd.notna(feat_row["GemiddeldInkomenPerInwoner_66"])
-                else None,
+                if pd.notna(feat_row["GemiddeldInkomenPerInwoner_66"]) else None,
+                pca_x=float(row["pca_x"]) if "pca_x" in row and pd.notna(row["pca_x"]) else None,
+                pca_y=float(row["pca_y"]) if "pca_y" in row and pd.notna(row["pca_y"]) else None,
             )
         )
         if len(neighbours) >= k:
             break
 
     return SimilarBuurtenResponse(
-        base_buurt_code=buurt_code.strip(),
+        base_buurt_code=str(buurt_code).strip(),
+        base_cluster_label_short=str(base_row.get("cluster_label_short", "")),
+        base_cluster_label_long=str(base_row.get("cluster_label_long", "")),
+        base_pca_x=float(base_row["pca_x"]) if "pca_x" in base_row and pd.notna(base_row["pca_x"]) else None,
+        base_pca_y=float(base_row["pca_y"]) if "pca_y" in base_row and pd.notna(base_row["pca_y"]) else None,
         neighbours=neighbours,
     )
 
@@ -470,7 +480,7 @@ async def buurt_cluster(
     return ClusterInfoResponse(
         buurt_code=buurt_code.strip(),
         cluster=cluster_id,
-        label_short=cluster_info["label_short"],
+        label=cluster_info["label_short"],
         label_long=cluster_info["label_long"],
     )
 

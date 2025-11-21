@@ -1,11 +1,10 @@
 // src/App.jsx
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 
-// Highcharts
 import Highcharts from "highcharts";
 import HighchartsReact from "highcharts-react-official";
 
@@ -44,6 +43,71 @@ const nf1 = new Intl.NumberFormat("nl-NL", {
   maximumFractionDigits: 1,
 });
 
+function formatOrNA(value, formatter = nf0) {
+  if (value === null || value === undefined || value === "") {
+    return "n.v.t.";
+  }
+  const num = Number(value);
+  if (Number.isNaN(num)) return "n.v.t.";
+  return formatter.format(num);
+}
+
+function getIncomeBadge(incomePerPerson) {
+  if (incomePerPerson === null || incomePerPerson === undefined) {
+    return { label: "Onbekend inkomen", level: "neutral" };
+  }
+  const v = Number(incomePerPerson);
+  if (v < 30) return { label: "Relatief lager inkomen", level: "low" };
+  if (v > 45) return { label: "Relatief hoger inkomen", level: "high" };
+  return { label: "Ongeveer gemiddeld inkomen", level: "mid" };
+}
+
+// Simpele mapping van cluster → icoon + kleurklasse
+function getClusterVisual(clusterId, labelShort) {
+  const text = (labelShort || "").toLowerCase();
+
+  if (text.includes("sted") || text.includes("centrum")) {
+    return { icon: "🏙️", toneClass: "cluster-pill-city" };
+  }
+  if (text.includes("rustig") || text.includes("dorps")) {
+    return { icon: "🏡", toneClass: "cluster-pill-suburban" };
+  }
+  if (text.includes("welvar") || text.includes("rijk") || text.includes("hoog")) {
+    return { icon: "💎", toneClass: "cluster-pill-wealthy" };
+  }
+
+  // fallback: gebaseerd op id
+  if (clusterId % 3 === 0) {
+    return { icon: "🏙️", toneClass: "cluster-pill-city" };
+  }
+  if (clusterId % 3 === 1) {
+    return { icon: "🏡", toneClass: "cluster-pill-suburban" };
+  }
+  return { icon: "💎", toneClass: "cluster-pill-wealthy" };
+}
+
+function getClusterIcon(labelShort) {
+  const s = (labelShort || "").toLowerCase();
+  if (!s) return "📍";
+
+  if (s.includes("sted") || s.includes("centrum") || s.includes("druk")) {
+    return "🏙️";
+  }
+  if (s.includes("dorps") || s.includes("rust") || s.includes("groen")) {
+    return "🏡";
+  }
+  if (s.includes("welvar") || s.includes("rijk") || s.includes("hoog inkomen")) {
+    return "💰";
+  }
+  if (s.includes("student") || s.includes("jong")) {
+    return "🎓";
+  }
+  if (s.includes("vergrijzend") || s.includes("oud")) {
+    return "🧓";
+  }
+  return "📍";
+}
+
 export default function App() {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
@@ -54,8 +118,8 @@ export default function App() {
   const [storyText, setStoryText] = useState("");
   const [storyAreaHa, setStoryAreaHa] = useState(null);
 
-  const [similarBuurten, setSimilarBuurten] = useState(null);
-  const [clusterInfo, setClusterInfo] = useState(null);
+  const [similarBuurten, setSimilarBuurten] = useState(null); // { base_buurt_code, neighbours: [...] }
+  const [clusterInfo, setClusterInfo] = useState(null); // { buurt_code, cluster, label, label_long }
   const [mlLoading, setMlLoading] = useState(false);
 
   const mapContainerRef = useRef(null);
@@ -146,9 +210,7 @@ export default function App() {
 
       let cbsStats = null;
       if (buurtCode) {
-        const filter = encodeURIComponent(
-          `WijkenEnBuurten eq '${buurtCode}'`
-        );
+        const filter = encodeURIComponent(`WijkenEnBuurten eq '${buurtCode}'`);
         const cbsUrl = `${CBS_TYPED_URL}?$filter=${filter}&$top=1`;
         const cbsResp = await fetch(cbsUrl);
         if (cbsResp.ok) {
@@ -157,29 +219,19 @@ export default function App() {
           if (rows.length > 0) {
             const row = rows[0];
 
+            // Helper: accepteert string of array van keys
             const pick = (obj, keys) => {
-              if (Array.isArray(keys)) {
-                for (const key of keys) {
-                  if (
-                    Object.prototype.hasOwnProperty.call(obj, key) &&
-                    obj[key] !== null &&
-                    obj[key] !== undefined
-                  ) {
-                    return obj[key];
-                  }
-                }
-                return null;
-              } else {
-                const key = keys;
+              const arr = Array.isArray(keys) ? keys : [keys];
+              for (const k of arr) {
                 if (
-                  Object.prototype.hasOwnProperty.call(obj, key) &&
-                  obj[key] !== null &&
-                  obj[key] !== undefined
+                  Object.prototype.hasOwnProperty.call(obj, k) &&
+                  obj[k] !== null &&
+                  obj[k] !== undefined
                 ) {
-                  return obj[key];
+                  return obj[k];
                 }
-                return null;
               }
+              return null;
             };
 
             const population = pick(row, "AantalInwoners_5");
@@ -202,10 +254,7 @@ export default function App() {
                 : null;
 
             // Inkomen
-            const incomePerPerson = pick(
-              row,
-              "GemiddeldInkomenPerInwoner_66"
-            );
+            const incomePerPerson = pick(row, "GemiddeldInkomenPerInwoner_66");
             const incomePerReceiver = pick(
               row,
               "GemiddeldInkomenPerInkomensontvanger_65"
@@ -218,16 +267,15 @@ export default function App() {
               row,
               "k_20HuishoudensMetHoogsteInkomen_71"
             );
+            const shareLowIncomePersons = pick(
+              row,
+              "k_40PersonenMetLaagsteInkomen_67"
+            );
+            const shareHighIncomePersons = pick(
+              row,
+              "k_20PersonenMetHoogsteInkomen_68"
+            );
 
-            // extra: inkomensverdeling (personen)
-            const shareLowIncomePersons = pick(row, [
-              "k_40PersonenMetLaagsteInkomen_67",
-            ]);
-            const shareHighIncomePersons = pick(row, [
-              "k_20PersonenMetHoogsteInkomen_68",
-            ]);
-
-            // Auto's & mobiliteit
             const carsPerHousehold = pick(
               row,
               "PersonenautoSPerHuishouden_91"
@@ -320,70 +368,55 @@ export default function App() {
     }
   }
 
-  function formatOrNA(value, formatter = nf0) {
-    if (value === null || value === undefined || value === "") {
-      return "n.v.t.";
-    }
-    return formatter.format(Number(value));
-  }
+  // Highcharts: leeftijdsopbouw
+  const ageChartOptions = useMemo(() => {
+    const stats = result?.cbsStats;
+    if (!stats?.ageGroups || !stats.population) return null;
 
-  function getIncomeBadge(incomePerPerson) {
-    if (incomePerPerson === null || incomePerPerson === undefined) {
-      return { label: "Onbekend inkomen", level: "neutral" };
-    }
-    if (incomePerPerson < 30) {
-      return { label: "Relatief lager inkomen", level: "low" };
-    }
-    if (incomePerPerson > 45) {
-      return { label: "Relatief hoger inkomen", level: "high" };
-    }
-    return { label: "Ongeveer gemiddeld inkomen", level: "mid" };
-  }
+    return {
+      chart: {
+        type: "column",
+        backgroundColor: "transparent",
+        height: 220,
+      },
+      title: {
+        text: "Leeftijdsopbouw buurt",
+        style: { color: "#e5e7eb", fontSize: "12px" },
+      },
+      xAxis: {
+        categories: Object.keys(stats.ageGroups),
+        crosshair: true,
+        labels: { style: { color: "#9ca3af", fontSize: "11px" } },
+      },
+      yAxis: {
+        min: 0,
+        title: {
+          text: "Aantal inwoners",
+          style: { color: "#9ca3af", fontSize: "11px" },
+        },
+        gridLineColor: "rgba(55,65,81,0.4)",
+        labels: { style: { color: "#9ca3af", fontSize: "10px" } },
+      },
+      legend: { enabled: false },
+      series: [
+        {
+          name: "Inwoners",
+          data: Object.values(stats.ageGroups).map((v) =>
+            typeof v === "number" ? v : null
+          ),
+          color: "#22c55e",
+        },
+      ],
+      credits: { enabled: false },
+    };
+  }, [result?.cbsStats]);
 
-  const ageChartOptions =
-    result?.cbsStats?.ageGroups && result.cbsStats.population
-      ? {
-          chart: {
-            type: "column",
-            backgroundColor: "transparent",
-          },
-          title: {
-            text: "Leeftijdsopbouw buurt",
-            style: { color: "#e5e7eb", fontSize: "12px" },
-          },
-          xAxis: {
-            categories: Object.keys(result.cbsStats.ageGroups),
-            crosshair: true,
-            labels: { style: { color: "#9ca3af", fontSize: "11px" } },
-          },
-          yAxis: {
-            min: 0,
-            title: {
-              text: "Aantal inwoners",
-              style: { color: "#9ca3af", fontSize: "11px" },
-            },
-            gridLineColor: "rgba(55,65,81,0.4)",
-            labels: { style: { color: "#9ca3af", fontSize: "10px" } },
-          },
-          legend: { enabled: false },
-          series: [
-            {
-              name: "Inwoners",
-              data: Object.values(result.cbsStats.ageGroups).map((v) =>
-                typeof v === "number" ? v : null
-              ),
-              color: "#22c55e",
-            },
-          ],
-          credits: { enabled: false },
-        }
-      : null;
+  // Highcharts: inkomenprofiel
+  const incomeChartOptions = useMemo(() => {
+    const stats = result?.cbsStats;
+    if (!stats?.incomePerPerson) return null;
 
-  const incomeChartOptions = React.useMemo(() => {
-    if (!result?.cbsStats?.incomePerPerson) return null;
-
-    const stats = result.cbsStats;
-    const income = Number(stats.incomePerPerson); // in duizend euro (CBS is usually x 1000)
+    const income = Number(stats.incomePerPerson);
     const low = stats.shareLowIncomePersons ?? null;
     const high = stats.shareHighIncomePersons ?? null;
 
@@ -406,9 +439,13 @@ export default function App() {
       chart: {
         type: "column",
         backgroundColor: "transparent",
-        height: 260,
+        height: 220,
       },
-      title: { text: null },
+      title: {
+        text: "Inkomenprofiel",
+
+        style: { color: "#e5e7eb", fontSize: "12px" },
+      },
       xAxis: {
         categories,
         labels: { style: { color: "#e5e7eb", fontSize: "11px" } },
@@ -426,6 +463,7 @@ export default function App() {
           name: "Inkomen / verdeling",
           data,
           borderRadius: 3,
+          color: "#22c55e",
         },
       ],
       tooltip: {
@@ -442,6 +480,162 @@ export default function App() {
       },
     };
   }, [result?.cbsStats]);
+
+  // PCA-chart opties
+  const pcaChartOptions = React.useMemo(() => {
+    if (!similarBuurten || similarBuurten.base_pca_x == null) return null;
+
+    const basePoint = {
+      x: similarBuurten.base_pca_x,
+      y: similarBuurten.base_pca_y,
+      name: "Deze buurt",
+    };
+
+    const neighbourPoints =
+      similarBuurten.neighbours
+        ?.filter((n) => n.pca_x != null && n.pca_y != null)
+        .map((n) => ({
+          x: n.pca_x,
+          y: n.pca_y,
+          name: `${n.buurt_code} – ${n.gemeente}`,
+          cluster: n.cluster_label_short,
+        })) || [];
+
+    if (!neighbourPoints.length) return null;
+
+    return {
+      chart: {
+        type: "scatter",
+        backgroundColor: "transparent",
+        height: 260,
+      },
+      title: {
+        text: "Vergelijkbare buurten (PCA-ruimte)",
+        style: { color: "#e5e7eb", fontSize: "12px" },
+      },
+      xAxis: {
+        title: { text: "PCA 1", style: { color: "#9ca3af", fontSize: "11px" } },
+        gridLineColor: "rgba(55,65,81,0.4)",
+        labels: { style: { color: "#9ca3af", fontSize: "10px" } },
+      },
+      yAxis: {
+        title: { text: "PCA 2", style: { color: "#9ca3af", fontSize: "11px" } },
+        gridLineColor: "rgba(55,65,81,0.4)",
+        labels: { style: { color: "#9ca3af", fontSize: "10px" } },
+      },
+      legend: { enabled: false },
+      tooltip: {
+        backgroundColor: "#020617",
+        borderColor: "#4b5563",
+        style: { color: "#e5e7eb", fontSize: "11px" },
+        formatter: function () {
+          if (this.series.name === "Deze buurt") {
+            return "Deze buurt";
+          }
+          const p = this.point;
+          return `${p.name}<br/>Cluster: ${p.cluster || "-"}`;
+        },
+      },
+      series: [
+        {
+          name: "Deze buurt",
+          data: [basePoint],
+          marker: { symbol: "circle", radius: 6 },
+        },
+        {
+          name: "Vergelijkbare buurten",
+          data: neighbourPoints,
+          marker: { symbol: "circle", radius: 4 },
+        },
+      ],
+      credits: { enabled: false },
+    };
+  }, [similarBuurten]);
+
+  // "PCA-achtige" KNN scatter (we gebruiken afstand + hoek om puntjes in 2D te leggen)
+  const knnScatterOptions = useMemo(() => {
+    if (!similarBuurten?.neighbours || similarBuurten.neighbours.length === 0) {
+      return null;
+    }
+
+    const points = [];
+    // huidige buurt in het midden
+    if (result?.address) {
+      points.push({
+        name: result.address,
+        x: 0,
+        y: 0,
+        cluster: clusterInfo?.cluster ?? null,
+        isBase: true,
+      });
+    }
+
+    const neighbours = similarBuurten.neighbours;
+    const n = neighbours.length;
+    neighbours.forEach((nb, i) => {
+      const angle = (2 * Math.PI * i) / n;
+      const r = nb.distance || 0.5;
+      points.push({
+        name: `${nb.naam.trim()} – ${nb.gemeente.trim()}`,
+        x: r * Math.cos(angle),
+        y: r * Math.sin(angle),
+        cluster: nb.cluster,
+        label_short: nb.cluster_label_short || null,
+        isBase: false,
+      });
+    });
+
+    return {
+      chart: {
+        type: "scatter",
+        backgroundColor: "transparent",
+        height: 240,
+      },
+      title: {
+        text: "Vergelijkbare buurten (ML-ruimte)",
+        style: { color: "#e5e7eb", fontSize: "12px" },
+      },
+      xAxis: {
+        title: { text: null },
+        labels: { enabled: false },
+        gridLineColor: "rgba(55,65,81,0.5)",
+      },
+      yAxis: {
+        title: { text: null },
+        labels: { enabled: false },
+        gridLineColor: "rgba(55,65,81,0.5)",
+      },
+      legend: { enabled: false },
+      credits: { enabled: false },
+      series: [
+        {
+          name: "Buurten",
+          data: points,
+          color: "#22c55e",
+          marker: {
+            radius: 4,
+            symbol: "circle",
+          },
+        },
+      ],
+      tooltip: {
+        backgroundColor: "#020617",
+        borderColor: "#4b5563",
+        style: { color: "#e5e7eb", fontSize: "11px" },
+        formatter: function () {
+          const p = this.point;
+          if (p.isBase) {
+            return `<b>Deze buurt</b><br/>${p.name}`;
+          }
+          return `<b>${p.name}</b><br/>Cluster: ${
+            p.cluster ?? "n.b."
+          }<br/>Afstand (ML): ${Math.sqrt(
+            p.x * p.x + p.y * p.y
+          ).toFixed(2)}`;
+        },
+      },
+    };
+  }, [similarBuurten, result?.address, clusterInfo]);
 
   // MapLibre: render when coords/geometry change
   useEffect(() => {
@@ -518,7 +712,7 @@ export default function App() {
     };
   }, [result?.coords, result?.geometry]);
 
-  // ML: fetch similar buurten and cluster when we know the buurtCode
+  // ML: fetch similar buurten + cluster info when we know the buurtCode
   useEffect(() => {
     const buurtCode = result?.cbsStats?.buurtCode;
     if (!buurtCode) {
@@ -531,10 +725,12 @@ export default function App() {
     setMlLoading(true);
 
     Promise.all([
-      fetch(`/api/similar-buurten?buurt_code=${encodeURIComponent(trimmed)}&k=5`)
-        .then((r) => r.ok ? r.json() : Promise.reject(r)),
-      fetch(`/api/buurt-cluster?buurt_code=${encodeURIComponent(trimmed)}`)
-        .then((r) => r.ok ? r.json() : Promise.reject(r)),
+      fetch(
+        `/api/similar-buurten?buurt_code=${encodeURIComponent(trimmed)}&k=5`
+      ).then((r) => (r.ok ? r.json() : Promise.reject(r))),
+      fetch(`/api/buurt-cluster?buurt_code=${encodeURIComponent(trimmed)}`).then(
+        (r) => (r.ok ? r.json() : Promise.reject(r))
+      ),
     ])
       .then(([similarJson, clusterJson]) => {
         setSimilarBuurten(similarJson);
@@ -548,6 +744,15 @@ export default function App() {
       .finally(() => setMlLoading(false));
   }, [result?.cbsStats?.buurtCode]);
 
+  const incomeBadge =
+    result?.cbsStats?.incomePerPerson != null
+      ? getIncomeBadge(result.cbsStats.incomePerPerson)
+      : null;
+
+  const clusterVisual = clusterInfo
+    ? getClusterVisual(clusterInfo.cluster, clusterInfo.label)
+    : null;
+
   return (
     <div className="app-shell">
       <header className="app-header">
@@ -556,7 +761,7 @@ export default function App() {
           <div>
             <h1>Wat is mijn straat?</h1>
             <p className="subtitle">
-              In één scherm: adres, pand, buurtcijfers en een AI-buurtverhaal.
+              In één scherm: pand, buurtcijfers, ML-inzichten en een AI-buurtverhaal.
             </p>
           </div>
         </div>
@@ -592,8 +797,26 @@ export default function App() {
                   </span>
                 )}
                 {clusterInfo && (
-                  <span className="badge">
-                    {clusterInfo.label_short} (cluster {clusterInfo.cluster})
+                  <span
+                    className={
+                      "badge cluster-pill " + (clusterVisual?.toneClass || "")
+                    }
+                  >
+                    {clusterVisual?.icon && (
+                      <span className="cluster-icon">
+                        {clusterVisual.icon}
+                      </span>
+                    )}
+                    {clusterInfo.label || `Cluster ${clusterInfo.cluster}`}
+                  </span>
+                )}
+                {incomeBadge && (
+                  <span
+                    className={
+                      "badge income-badge income-" + incomeBadge.level
+                    }
+                  >
+                    {incomeBadge.label}
                   </span>
                 )}
                 {result.buildingInfo?.bouwjaar && (
@@ -662,9 +885,9 @@ export default function App() {
                 )}
               </div>
 
-              {/* Right: stats + AI/ML */}
+              {/* Right: panels */}
               <div className="insights-panel-column">
-                {/* Buurt in één oogopslag */}
+                {/* Buurtcijfers + Geo feature */}
                 <div className="panel-block">
                   <h2>Buurt in één oogopslag</h2>
                   {result.cbsStats ? (
@@ -711,10 +934,10 @@ export default function App() {
                       {result.cbsStats.incomePerPerson != null && (
                         <div className="stat-card">
                           <div className="stat-label">
-                            Gem. inkomen per persoon (× 1000 €)
+                            Gem. inkomen per persoon
                           </div>
                           <div className="stat-value">
-                            {formatOrNA(result.cbsStats.incomePerPerson, nf1)}
+                            € {formatOrNA(result.cbsStats.incomePerPerson, nf0)}
                           </div>
                           <div className="stat-help">
                             Gemiddeld besteedbaar inkomen per persoon (CBS).
@@ -724,13 +947,16 @@ export default function App() {
 
                       {storyAreaHa != null && (
                         <div className="stat-card">
-                          <div className="stat-label">Oppervlakte pand (ongeveer)</div>
+                          <div className="stat-label">
+                            Oppervlakte pand (ongeveer)
+                          </div>
                           <div className="stat-value">
                             {formatOrNA(storyAreaHa, nf1)}
                             <span className="small"> ha</span>
                           </div>
                           <div className="stat-help">
-                            Berekend met GeoPandas op basis van BAG-geometrie (indicatief).
+                            Berekend met GeoPandas op basis van BAG-geometrie
+                            (indicatief).
                           </div>
                         </div>
                       )}
@@ -740,90 +966,110 @@ export default function App() {
                   )}
                 </div>
 
+                {/* Leeftijd + inkomen charts */}
+                {(ageChartOptions || incomeChartOptions) && (
+                  <div className="panel-block charts-row">
+                    {ageChartOptions && (
+                      <div className="chart-card">
+                        <HighchartsReact
+                          highcharts={Highcharts}
+                          options={ageChartOptions}
+                        />
+                      </div>
+                    )}
+                    {incomeChartOptions && (
+                      <div className="chart-card">
+                        <HighchartsReact
+                          highcharts={Highcharts}
+                          options={incomeChartOptions}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* AI + ML panel */}
                 <div className="panel-block">
                   <h2>AI & ML-inzichten</h2>
 
-                  {/* Cluster label (KMeans + LLM) */}
                   {clusterInfo && (
-                    <div className="stat-card" style={{ marginBottom: "0.5rem" }}>
-                      <div className="stat-label">
-                        Cluster {clusterInfo.cluster}
-                      </div>
+                    <div className="stat-card" style={{ marginBottom: "0.6rem" }}>
+                      <div className="stat-label">Buurtprofiel (cluster)</div>
                       <div className="stat-value">
-                        {clusterInfo.label_short}
+                        <span style={{ marginRight: "0.35rem" }}>
+                          {getClusterIcon(clusterInfo.label)}
+                        </span>
+                        {clusterInfo.label}
                       </div>
                       {clusterInfo.label_long && (
-                        <div className="stat-help small">
-                          {clusterInfo.label_long}
-                        </div>
+                        <div className="stat-help small">{clusterInfo.label_long}</div>
                       )}
                     </div>
                   )}
 
-                  {/* KNN: vergelijkbare buurten */}
-                  {mlLoading && (
-                    <p className="small">ML-modellen laden vergelijkbare buurten...</p>
-                  )}
-                  {!mlLoading &&
-                    similarBuurten?.neighbours &&
-                    similarBuurten.neighbours.length > 0 && (
-                      <div className="stat-card" style={{ marginBottom: "0.5rem" }}>
-                        <div className="stat-label">Vergelijkbare buurten (KNN)</div>
-                        <ul className="small">
-                          {similarBuurten.neighbours.map((b) => (
-                            <li key={b.buurt_code}>
-                              <strong>{b.naam.trim() || b.buurt_code}</strong> –{" "}
-                              {b.gemeente.trim()}{" "}
-                              {b.income_per_person != null && (
-                                <>
-                                  • inkomen: {formatOrNA(b.income_per_person, nf1)}
-                                </>
-                              )}
-                            </li>
-                          ))}
-                        </ul>
+                  {/* AI verhaal */}
+                  <div className="stat-card" style={{ marginBottom: "0.6rem" }}>
+                    <div className="stat-label">AI-buurtverhaal</div>
+                    <div className="form-row" style={{ margin: "0.4rem 0 0.4rem" }}>
+                      <button
+                        type="button"
+                        onClick={() => generateStory("starter")}
+                        disabled={storyLoading}
+                      >
+                        {storyLoading ? "AI is bezig..." : "Maak buurtverhaal"}
+                      </button>
+                    </div>
+                    {storyText && (
+                      <div className="story-card">
+                        <ReactMarkdown>{storyText}</ReactMarkdown>
                       </div>
                     )}
-
-                  {/* AI-buurtverhaal */}
-                  <p className="small">
-                    Laat een beschrijving maken van de buurt op basis van de cijfers
-                    hierboven en de geometrie van het pand.
-                  </p>
-                  <div className="form-row" style={{ marginBottom: "0.6rem" }}>
-                    <button
-                      type="button"
-                      onClick={() => generateStory("starter")}
-                      disabled={storyLoading}
-                    >
-                      {storyLoading ? "AI is bezig..." : "Maak buurtverhaal"}
-                    </button>
                   </div>
 
-                  {storyText && (
-                    <div className="stat-card story-card">
-                      <ReactMarkdown>{storyText}</ReactMarkdown>
+                  {/* Vergelijkbare buurten */}
+                  {similarBuurten && similarBuurten.neighbours?.length > 0 && (
+                    <div className="stat-card" style={{ marginBottom: "0.6rem" }}>
+                      <div className="stat-label">Vergelijkbare buurten (KNN)</div>
+                      <ul className="similar-list">
+                        {similarBuurten.neighbours.map((b) => (
+                          <li key={b.buurt_code}>
+                            <span className="similar-icon">
+                              {getClusterIcon(b.cluster_label_short)}
+                            </span>
+                            <div className="similar-main">
+                              <div className="similar-title">
+                                {b.buurt_code} – {b.gemeente}
+                              </div>
+                              <div className="small">
+                                {b.cluster_label_short} •{" "}
+                                {b.income_per_person != null
+                                  ? `inkomen: ${formatOrNA(b.income_per_person, nf1)} × 1000 €`
+                                  : "inkomen: n.v.t."}
+                                {b.population != null
+                                  ? ` • inwoners: ${formatOrNA(b.population, nf0)}`
+                                  : ""}
+                              </div>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
                     </div>
                   )}
 
-                  {/* Charts: leeftijd & inkomen */}
-                  {ageChartOptions && (
-                    <div className="stat-card" style={{ marginTop: "0.6rem" }}>
+                  {/* PCA chart */}
+                  {pcaChartOptions && (
+                    <div className="stat-card">
                       <HighchartsReact
                         highcharts={Highcharts}
-                        options={ageChartOptions}
+                        options={pcaChartOptions}
                       />
                     </div>
                   )}
 
-                  {incomeChartOptions && (
-                    <div className="stat-card" style={{ marginTop: "0.6rem" }}>
-                      <HighchartsReact
-                        highcharts={Highcharts}
-                        options={incomeChartOptions}
-                      />
-                    </div>
+                  {mlLoading && (
+                    <p className="small" style={{ marginTop: "0.4rem" }}>
+                      ML-inzichten worden geladen...
+                    </p>
                   )}
                 </div>
               </div>
