@@ -1,7 +1,7 @@
 # backend/main.py
 import os
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Tuple
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
@@ -63,6 +63,12 @@ app.add_middleware(
 # ---------- Pydantic modellen ----------
 
 
+class NeighbourhoodMetrics(BaseModel):
+    area_ha: Optional[float] = None
+    centroid_lat: Optional[float] = None
+    centroid_lon: Optional[float] = None
+
+
 class NeighbourhoodStoryRequest(BaseModel):
     data: Dict[str, Any] = Field(
         ...,
@@ -81,22 +87,22 @@ class NeighbourhoodStoryRequest(BaseModel):
 class NeighbourhoodStoryResponse(BaseModel):
     story: str
     area_ha: Optional[float] = None
-    centroid_lat: Optional[float] = None
-    centroid_lon: Optional[float] = None
 
 
 # ---------- Data-analyse helpers (pandas & geopandas) ----------
 
 
-def analyse_neighbourhood_data(data: Dict[str, Any]) -> dict:
+def analyse_neighbourhood_data(data: Dict[str, Any]) -> Tuple[str, Dict[str, float]]:
     """
     Gebruik pandas/geopandas om een compacte samenvatting van de data te maken
-    voor de LLM én wat ruwe stats terug te geven.
+    voor de LLM + enkele numerieke metrics voor de frontend (zoals oppervlakte).
     """
     df = pd.json_normalize(data)
 
     summary_lines: list[str] = []
+    metrics: Dict[str, float] = {"area_ha": None}
 
+    # 1) Numerieke indicatoren
     numeric_cols = df.select_dtypes(include="number").columns.tolist()
     if numeric_cols:
         summary_lines.append("Enkele numerieke indicatoren uit de data:")
@@ -106,37 +112,30 @@ def analyse_neighbourhood_data(data: Dict[str, Any]) -> dict:
     else:
         summary_lines.append("Geen numerieke indicatoren gevonden in de data.")
 
-    area_ha = None
-    centroid_lat = None
-    centroid_lon = None
-
+    # 2) Geometrie / oppervlakte / centroid (optioneel)
     if "geometry" in data:
         try:
-            geom = shape(data["geometry"])
+            geom = shape(data["geometry"])  # verwacht GeoJSON-achtige dict
             gdf = gpd.GeoDataFrame(df, geometry=[geom], crs="EPSG:4326")
 
+            # Approx-oppervlakte in hectare (projectie naar WebMercator)
             gdf_m = gdf.to_crs(3857)
             area_m2 = float(gdf_m.area.iloc[0])
             area_ha = area_m2 / 10_000
+            metrics["area_ha"] = area_ha
             summary_lines.append(f"Benaderde oppervlakte: {area_ha:.1f} hectare.")
 
+            # Centroid terug in WGS84
             centroid = gdf.to_crs(4326).geometry.iloc[0].centroid
-            centroid_lat = float(centroid.y)
-            centroid_lon = float(centroid.x)
             summary_lines.append(
                 f"Ongeveer centrum op (lat, lon): "
-                f"{centroid_lat:.5f}, {centroid_lon:.5f}."
+                f"{centroid.y:.5f}, {centroid.x:.5f}."
             )
         except Exception as exc:
             print("Geometrie-analyse mislukt:", repr(exc))
             summary_lines.append("Geometrie aanwezig maar kon niet worden geanalyseerd.")
 
-    return {
-        "summary_text": "\n".join(summary_lines),
-        "area_ha": area_ha,
-        "centroid_lat": centroid_lat,
-        "centroid_lon": centroid_lon,
-    }
+    return "\n".join(summary_lines), metrics
 
 
 # ---------- OpenAI helper ----------
@@ -186,8 +185,7 @@ async def neighbourhood_story(req: NeighbourhoodStoryRequest):
 
     persona = req.persona or "algemeen huishouden"
 
-    analysis = analyse_neighbourhood_data(req.data)
-    analysis_summary = analysis["summary_text"]
+    analysis_summary, metrics = analyse_neighbourhood_data(req.data)
 
     prompt = f"""
 Acteer als een neutrale Nederlandse buurtuitlegger.
@@ -230,9 +228,7 @@ Schrijf nu:
 
     return NeighbourhoodStoryResponse(
         story=story,
-        area_ha=analysis["area_ha"],
-        centroid_lat=analysis["centroid_lat"],
-        centroid_lon=analysis["centroid_lon"],
+        area_ha=metrics.get("area_ha"),
     )
 
 

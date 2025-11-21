@@ -1,49 +1,110 @@
+/* src/index.css */
+
 * {
   box-sizing: border-box;
 }
 
 body {
   margin: 0;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  background: #0f172a;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  background: radial-gradient(circle at top, #1f2937, #020617 55%);
   color: #e5e7eb;
 }
 
+/* Layout shell */
+
 .app-shell {
-  max-width: 900px;
+  max-width: 1080px;
   margin: 0 auto;
-  padding: 2rem 1.5rem 3rem;
+  padding: 2.5rem 1.5rem 3.5rem;
 }
 
-.card {
-  background: rgba(15, 23, 42, 0.95);
-  border-radius: 1rem;
-  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.8);
-  padding: 1.5rem 1.75rem;
-  border: 1px solid rgba(148, 163, 184, 0.3);
+/* Header */
+
+.app-header {
+  margin-bottom: 1.5rem;
+}
+
+.app-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+}
+
+.logo-pill {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #22c55e, #a3e635);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 0.9rem;
+  color: #052e16;
+  box-shadow: 0 12px 35px rgba(34, 197, 94, 0.5);
 }
 
 h1 {
-  font-size: 1.8rem;
-  margin-bottom: 0.25rem;
-}
-
-h2 {
-  font-size: 1.2rem;
-  margin: 1.5rem 0 0.5rem;
+  font-size: 1.9rem;
+  margin: 0 0 0.15rem;
 }
 
 .subtitle {
   color: #9ca3af;
   font-size: 0.95rem;
-  margin-bottom: 1.5rem;
+  margin: 0;
 }
+
+/* Card */
+
+.card {
+  background: rgba(15, 23, 42, 0.96);
+  border-radius: 1.1rem;
+  box-shadow: 0 28px 70px rgba(15, 23, 42, 0.9);
+  padding: 1.5rem 1.75rem 1.75rem;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+}
+
+/* Sections */
+
+.section {
+  margin-top: 1.4rem;
+}
+
+.section:first-of-type {
+  margin-top: 0.9rem;
+}
+
+.section h2 {
+  font-size: 1.05rem;
+  margin: 0 0 0.5rem;
+}
+
+.two-column {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 1.4rem;
+}
+
+.column {
+  min-width: 0;
+}
+
+@media (max-width: 800px) {
+  .two-column {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Form */
 
 .form-row {
   display: flex;
   gap: 0.75rem;
   flex-wrap: wrap;
-  margin-bottom: 1rem;
+  margin-bottom: 0.5rem;
 }
 
 input[type="text"] {
@@ -54,11 +115,19 @@ input[type="text"] {
   border: 1px solid #4b5563;
   background: rgba(15, 23, 42, 0.95);
   color: #e5e7eb;
+  outline: none;
 }
 
 input[type="text"]::placeholder {
   color: #6b7280;
 }
+
+input[type="text"]:focus {
+  border-color: #22c55e;
+  box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.5);
+}
+
+/* Buttons */
 
 button {
   border: none;
@@ -68,6 +137,16 @@ button {
   cursor: pointer;
   background: #22c55e;
   color: #052e16;
+  font-size: 0.9rem;
+  white-space: nowrap;
+  transition: transform 0.06s ease, box-shadow 0.06s ease,
+    background-color 0.12s ease;
+}
+
+button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 25px rgba(34, 197, 94, 0.35);
+  background: #16a34a;
 }
 
 button:disabled {
@@ -75,32 +154,49 @@ button:disabled {
   cursor: default;
 }
 
-.badge-row {
+.persona-row {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-  margin: 0.5rem 0 1rem;
+  margin: 0.75rem 0 0.75rem;
+}
+
+/* Badges */
+
+.badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.4rem 0 0.6rem;
 }
 
 .badge {
   padding: 0.25rem 0.6rem;
   border-radius: 999px;
   font-size: 0.8rem;
-  background: rgba(55, 65, 81, 0.9);
+  background: rgba(31, 41, 55, 0.95);
+  border: 1px solid rgba(55, 65, 81, 0.9);
 }
+
+.primary-badge {
+  background: rgba(34, 197, 94, 0.12);
+  border-color: rgba(34, 197, 94, 0.5);
+}
+
+/* Stats */
 
 .stat-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 0.75rem;
-  margin-top: 0.5rem;
+  margin-top: 0.35rem;
 }
 
 .stat-card {
   padding: 0.65rem 0.75rem;
   border-radius: 0.75rem;
-  background: rgba(15, 23, 42, 0.85);
-  border: 1px solid rgba(55, 65, 81, 0.8);
+  background: rgba(15, 23, 42, 0.88);
+  border: 1px solid rgba(55, 65, 81, 0.9);
 }
 
 .stat-label {
@@ -112,6 +208,14 @@ button:disabled {
   font-size: 1rem;
   font-weight: 600;
 }
+
+.stat-help {
+  margin-top: 0.2rem;
+  font-size: 0.8rem;
+  color: #9ca3af;
+}
+
+/* Text helpers */
 
 .small {
   font-size: 0.85rem;
@@ -125,14 +229,42 @@ button:disabled {
 }
 
 /* Map */
+
 .map-card {
-  margin-top: 1rem;
+  margin-top: 0.4rem;
 }
 
 .map {
   width: 100%;
-  height: 260px;
-  border-radius: 0.75rem;
+  height: 340px; /* groter */
+  border-radius: 0.9rem;
   overflow: hidden;
   border: 1px solid rgba(55, 65, 81, 0.8);
+}
+
+/* Story markdown */
+
+.story-card {
+  margin-top: 0.5rem;
+}
+
+.story-card h1,
+.story-card h2,
+.story-card h3 {
+  font-size: 1rem;
+  margin: 0 0 0.4rem;
+}
+
+.story-card p {
+  margin: 0.3rem 0;
+  font-size: 0.9rem;
+}
+
+.story-card ul {
+  padding-left: 1.1rem;
+  margin: 0.3rem 0;
+}
+
+.story-card li {
+  margin: 0.1rem 0;
 }

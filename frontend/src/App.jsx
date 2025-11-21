@@ -1,6 +1,8 @@
+// src/App.jsx
+
 import React, { useState } from "react";
 import ReactMarkdown from "react-markdown";
-import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Popup, GeoJSON } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
@@ -19,14 +21,14 @@ const markerIcon = new L.Icon({
   iconSize: [25, 41],
   iconAnchor: [12, 41],
   popupAnchor: [1, -34],
-  shadowSize: [41, 41]
+  shadowSize: [41, 41],
 });
 
 const nf0 = new Intl.NumberFormat("nl-NL", {
-  maximumFractionDigits: 0
+  maximumFractionDigits: 0,
 });
 const nf1 = new Intl.NumberFormat("nl-NL", {
-  maximumFractionDigits: 1
+  maximumFractionDigits: 1,
 });
 
 export default function App() {
@@ -37,15 +39,14 @@ export default function App() {
 
   const [storyLoading, setStoryLoading] = useState(false);
   const [storyText, setStoryText] = useState("");
-
   const [storyAreaHa, setStoryAreaHa] = useState(null);
-  const [storyCentroid, setStoryCentroid] = useState(null);
 
   async function handleSearch(e) {
     e.preventDefault();
     setError("");
     setResult(null);
     setStoryText("");
+    setStoryAreaHa(null);
 
     if (!query.trim()) {
       setError('Vul een adres in (bijv. "Damrak 1, Amsterdam").');
@@ -54,11 +55,12 @@ export default function App() {
 
     setLoading(true);
     try {
+      // 1) PDOK adreszoeker
       const locUrl = `${PDOK_FREE_URL}?q=${encodeURIComponent(
         query
       )}&rows=1&fq=type:adres`;
       const locResp = await fetch(locUrl, {
-        headers: { Accept: "application/json" }
+        headers: { Accept: "application/json" },
       });
       if (!locResp.ok) {
         throw new Error("Locatieserver gaf een foutmelding.");
@@ -80,9 +82,7 @@ export default function App() {
       // Coördinaten uit centroide_ll
       let coords = null;
       if (doc.centroide_ll) {
-        const match = doc.centroide_ll.match(
-          /POINT\(([^ ]+) ([^)]+)\)/
-        );
+        const match = doc.centroide_ll.match(/POINT\(([^ ]+) ([^)]+)\)/);
         if (match) {
           const lon = parseFloat(match[1]);
           const lat = parseFloat(match[2]);
@@ -92,16 +92,13 @@ export default function App() {
         }
       }
 
-      // Pand identificatie
+      // 2) BAG pand info + geometry
+      let buildingInfo = null;
+      let geometry = null;
       let pandIdentificatie = null;
       if (doc.id && doc.id.includes("pand")) {
         pandIdentificatie = doc.id.split(":").pop();
       }
-
-      // BAG pand info
-      let buildingInfo = null;
-      let geometry = null; // <--- nieuw
-
       if (pandIdentificatie) {
         const bagUrl = `${BAG_PAND_URL}?identificatie=${pandIdentificatie}&f=json`;
         const bagResp = await fetch(bagUrl);
@@ -114,9 +111,8 @@ export default function App() {
             buildingInfo = {
               bouwjaar: props.bouwjaar,
               gebruiksdoel: props.gebruiksdoel || props.gebruiksdoelen,
-              status: props.status
+              status: props.status,
             };
-            // GeoJSON-geometrie rechtstreeks doorgeven
             if (feature.geometry) {
               geometry = feature.geometry;
             }
@@ -124,13 +120,12 @@ export default function App() {
         }
       }
 
-      // CBS kerncijfers
+      // 3) CBS kerncijfers
       const buurtCode =
         doc.buurtcode || doc.wijkcode || doc.gemeentecode || null;
 
       let cbsStats = null;
       if (buurtCode) {
-        // Alleen T001036 (Totaal aantal inwoners) – dit weten we zeker bestaat
         const filter = encodeURIComponent(
           `WijkenEnBuurten eq '${buurtCode}' and Measure eq 'T001036'`
         );
@@ -144,12 +139,11 @@ export default function App() {
           cbsStats = {
             buurtCode,
             population: popRow ? popRow.Value : null,
-            density: null,          // TODO: later koppelen aan juiste CBS dataset
-            pct65Plus: null,        // TODO: later koppelen aan juiste CBS dataset
-            incomePerPerson: null   // TODO: later koppelen aan juiste CBS dataset
+            density: null, // TODO: later koppelen aan juiste CBS dataset
+            pct65Plus: null, // TODO: later koppelen aan juiste CBS dataset
+            incomePerPerson: null, // TODO: later koppelen aan juiste CBS dataset
           };
 
-          // Handige debug voor lokaal:
           console.log("CBS rows for buurt:", buurtCode, rows);
         }
       }
@@ -159,7 +153,7 @@ export default function App() {
         coords,
         buildingInfo,
         cbsStats,
-        geometry // <--- nieuw
+        geometry,
       });
     } catch (err) {
       console.error(err);
@@ -176,7 +170,7 @@ export default function App() {
       coords: result.coords,
       buildingInfo: result.buildingInfo,
       cbsStats: result.cbsStats,
-      geometry: result.geometry   // <--- nieuw
+      geometry: result.geometry,
     };
   }
 
@@ -186,33 +180,26 @@ export default function App() {
     setStoryLoading(true);
     setStoryText("");
     setStoryAreaHa(null);
-    setStoryCentroid(null);
     try {
       const resp = await fetch("/api/neighbourhood-story", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ data, persona })
+        body: JSON.stringify({ data, persona }),
       });
       const json = await resp.json();
       if (!resp.ok) throw new Error(json.detail || json.error || "AI-fout");
 
       setStoryText(json.story || "");
-      if (json.area_ha != null) {
-        setStoryAreaHa(json.area_ha);
-      }
-      if (json.centroid_lat != null && json.centroid_lon != null) {
-        setStoryCentroid([json.centroid_lat, json.centroid_lon]);
-      }
+      setStoryAreaHa(
+        typeof json.area_ha === "number" ? json.area_ha : null
+      );
     } catch (err) {
       console.error(err);
-      setStoryText(
-        "Kon geen buurtverhaal genereren (AI-fout)."
-      );
+      setStoryText("Kon geen buurtverhaal genereren (AI-fout).");
     } finally {
       setStoryLoading(false);
     }
   }
-
 
   function formatOrNA(value, formatter = nf0) {
     if (value === null || value === undefined || value === "") {
@@ -223,12 +210,19 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <div className="card">
-        <h1>Wat is mijn straat?</h1>
-        <p className="subtitle">
-          Snel inzicht in je pand en buurt op basis van BAG, PDOK, CBS en AI.
-        </p>
+      <header className="app-header">
+        <div className="app-title-row">
+          <span className="logo-pill">NL</span>
+          <div>
+            <h1>Wat is mijn straat?</h1>
+            <p className="subtitle">
+              In één scherm: adres, pand, buurtcijfers en een AI-buurtverhaal.
+            </p>
+          </div>
+        </div>
+      </header>
 
+      <div className="card">
         <form onSubmit={handleSearch}>
           <div className="form-row">
             <input
@@ -247,153 +241,211 @@ export default function App() {
 
         {result && (
           <>
-
-            <h2>Adres</h2>
-            <div className="badge-row">
-              <span className="badge">{result.address}</span>
-              {result.cbsStats?.buurtCode && (
-                <span className="badge">
-                  CBS buurtcode: {result.cbsStats.buurtCode.trim()}
-                </span>
-              )}
-            </div>
-
-            {result.coords && (
-              <div className="map-card">
-                <MapContainer
-                  center={result.coords}
-                  zoom={17}
-                  scrollWheelZoom={false}
-                  className="map"
-                >
-                  <TileLayer
-                    attribution='&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> bijdragers'
-                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                  />
-                  <Marker
-                    position={result.coords}
-                    icon={markerIcon}
-                  >
-                    <Popup>{result.address}</Popup>
-                  </Marker>
-                </MapContainer>
-                <p className="small">
-                  Benadering van de locatie. Geen juridisch kaartmateriaal.
-                </p>
-              </div>
-            )}
-
-            <h2>Buurt in één oogopslag</h2>
-            {result.cbsStats ? (
-              <div className="stat-grid">
-                {result.cbsStats.population != null && (
-                  <div className="stat-card">
-                    <div className="stat-label">Inwoners (totaal)</div>
-                    <div className="stat-value">
-                      {formatOrNA(result.cbsStats.population, nf0)}
-                    </div>
-                    <div className="stat-help">
-                      Hoeveel mensen er in de buurt wonen (CBS data).
-                    </div>
-                  </div>
+            {/* Adres & codes */}
+            <section className="section">
+              <h2>Adres</h2>
+              <div className="badge-row">
+                <span className="badge primary-badge">{result.address}</span>
+                {result.cbsStats?.buurtCode && (
+                  <span className="badge">
+                    CBS buurtcode: {result.cbsStats.buurtCode.trim()}
+                  </span>
                 )}
-
-                {result.cbsStats.density != null && (
-                  <div className="stat-card">
-                    <div className="stat-label">Bevolkingsdichtheid</div>
-                    <div className="stat-value">
-                      {formatOrNA(result.cbsStats.density, nf0)}
-                      <span className="small"> / km²</span>
-                    </div>
-                    <div className="stat-help">
-                      Hogere dichtheid betekent meestal een drukkere wijk met meer voorzieningen.
-                    </div>
-                  </div>
-                )}
-
-                {result.cbsStats.pct65Plus != null && (
-                  <div className="stat-card">
-                    <div className="stat-label">% 65-plus</div>
-                    <div className="stat-value">
-                      {formatOrNA(result.cbsStats.pct65Plus, nf1)}
-                      <span className="small"> %</span>
-                    </div>
-                    <div className="stat-help">
-                      Percentage bewoners van 65 jaar en ouder.
-                    </div>
-                  </div>
-                )}
-
-                {result.cbsStats.incomePerPerson != null && (
-                  <div className="stat-card">
-                    <div className="stat-label">
-                      Gem. inkomen per persoon
-                    </div>
-                    <div className="stat-value">
-                      €{" "}
-                      {formatOrNA(
-                        result.cbsStats.incomePerPerson,
-                        nf0
-                      )}
-                    </div>
-                    <div className="stat-help">
-                      Gemiddeld besteedbaar inkomen per persoon (CBS).
-                    </div>
-                  </div>
+                {result.buildingInfo?.bouwjaar && (
+                  <span className="badge">
+                    Bouwjaar pand: {result.buildingInfo.bouwjaar}
+                  </span>
                 )}
               </div>
-            ) : (
-              <p className="small">
-                Geen CBS-buurtcijfers gevonden.
-              </p>
-            )}
+            </section>
 
-            {storyAreaHa != null && (
-              <div className="stat-grid" style={{ marginTop: "0.75rem" }}>
-                <div className="stat-card">
-                  <div className="stat-label">Oppervlakte pand (geopandas)</div>
-                  <div className="stat-value">
-                    {nf1.format(storyAreaHa)} <span className="small">ha</span>
-                  </div>
-                  <div className="stat-help">
-                    Benadering op basis van BAG-geometrie; geen juridisch kadastraal oppervlak.
-                  </div>
+            {/* Pandinfo */}
+            {result.buildingInfo && (
+              <section className="section">
+                <h2>Pand</h2>
+                <div className="stat-grid">
+                  {result.buildingInfo.bouwjaar && (
+                    <div className="stat-card">
+                      <div className="stat-label">Bouwjaar</div>
+                      <div className="stat-value">
+                        {result.buildingInfo.bouwjaar}
+                      </div>
+                      <div className="stat-help small">
+                        Jaar waarin het pand volgens BAG is gebouwd.
+                      </div>
+                    </div>
+                  )}
+                  {result.buildingInfo.gebruiksdoel && (
+                    <div className="stat-card">
+                      <div className="stat-label">Gebruiksdoel</div>
+                      <div className="stat-value">
+                        {Array.isArray(result.buildingInfo.gebruiksdoel)
+                          ? result.buildingInfo.gebruiksdoel.join(", ")
+                          : result.buildingInfo.gebruiksdoel}
+                      </div>
+                      <div className="stat-help small">
+                        Registratie van het hoofdzakelijke gebruik.
+                      </div>
+                    </div>
+                  )}
+                  {result.buildingInfo.status && (
+                    <div className="stat-card">
+                      <div className="stat-label">Status</div>
+                      <div className="stat-value">
+                        {result.buildingInfo.status}
+                      </div>
+                      <div className="stat-help small">
+                        BAG-status (bijv. in gebruik, in aanbouw).
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </div>
+              </section>
             )}
+
+            {/* Map + cijfers in twee kolommen */}
+            <section className="section two-column">
+              <div className="column">
+                {result.coords && (
+                  <div className="map-card">
+                    <MapContainer
+                      center={result.coords}
+                      zoom={18}
+                      scrollWheelZoom={false}
+                      className="map"
+                    >
+                      <TileLayer
+                        attribution='&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> bijdragers'
+                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                      />
+                      <Marker position={result.coords} icon={markerIcon}>
+                        <Popup>{result.address}</Popup>
+                      </Marker>
+
+                      {/* BAG pand polygon als overlay (indien beschikbaar) */}
+                      {result.geometry && (
+                        <GeoJSON
+                          data={result.geometry}
+                          style={() => ({
+                            weight: 2,
+                            fillOpacity: 0.25,
+                          })}
+                        />
+                      )}
+                    </MapContainer>
+                    <p className="small">
+                      Benadering van de locatie en gebouwcontour. Geen juridisch
+                      kaartmateriaal.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div className="column">
+                <h2>Buurt in één oogopslag</h2>
+                {result.cbsStats ? (
+                  <div className="stat-grid">
+                    {result.cbsStats.population != null && (
+                      <div className="stat-card">
+                        <div className="stat-label">Inwoners (totaal)</div>
+                        <div className="stat-value">
+                          {formatOrNA(result.cbsStats.population, nf0)}
+                        </div>
+                        <div className="stat-help">
+                          Hoeveel mensen er in de buurt wonen (CBS data).
+                        </div>
+                      </div>
+                    )}
+
+                    {storyAreaHa != null && (
+                      <div className="stat-card">
+                        <div className="stat-label">Oppervlakte pand (ongeveer)</div>
+                        <div className="stat-value">
+                          {formatOrNA(storyAreaHa, nf1)}
+                          <span className="small"> ha</span>
+                        </div>
+                        <div className="stat-help">
+                          Berekend op basis van BAG-geometrie (indicatief).
+                        </div>
+                      </div>
+                    )}
+
+                    {result.cbsStats.density != null && (
+                      <div className="stat-card">
+                        <div className="stat-label">Bevolkingsdichtheid</div>
+                        <div className="stat-value">
+                          {formatOrNA(result.cbsStats.density, nf0)}
+                          <span className="small"> / km²</span>
+                        </div>
+                        <div className="stat-help">
+                          Hogere dichtheid betekent meestal een drukkere wijk met
+                          meer voorzieningen.
+                        </div>
+                      </div>
+                    )}
+
+                    {result.cbsStats.pct65Plus != null && (
+                      <div className="stat-card">
+                        <div className="stat-label">% 65-plus</div>
+                        <div className="stat-value">
+                          {formatOrNA(result.cbsStats.pct65Plus, nf1)}
+                          <span className="small"> %</span>
+                        </div>
+                        <div className="stat-help">
+                          Percentage bewoners van 65 jaar en ouder.
+                        </div>
+                      </div>
+                    )}
+
+                    {result.cbsStats.incomePerPerson != null && (
+                      <div className="stat-card">
+                        <div className="stat-label">
+                          Gem. inkomen per persoon
+                        </div>
+                        <div className="stat-value">
+                          €{" "}
+                          {formatOrNA(
+                            result.cbsStats.incomePerPerson,
+                            nf0
+                          )}
+                        </div>
+                        <div className="stat-help">
+                          Gemiddeld besteedbaar inkomen per persoon (CBS).
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <p className="small">Geen CBS-buurtcijfers gevonden.</p>
+                )}
+              </div>
+            </section>
 
             {/* AI: Buurtverhaal */}
-            <h2>Buurtverhaal (AI)</h2>
-            <p className="small">
-              Laat een korte beschrijving maken van de buurt op basis
-              van de gegevens hierboven.
-            </p>
-            <div className="form-row" style={{ marginBottom: "0.75rem" }}>
-              <button
-                type="button"
-                onClick={() => generateStory("starter")}
-                disabled={storyLoading}
-              >
-                {storyLoading ? "AI is bezig..." : "Maak buurtverhaal"}
-              </button>
-            </div>
-            {storyText && (
-              <div
-                className="stat-card"
-                style={{ marginTop: "0.5rem" }}
-              >
-                <ReactMarkdown>{storyText}</ReactMarkdown>
+            <section className="section">
+              <h2>Buurtverhaal (AI)</h2>
+              <p className="small">
+                Laat een korte beschrijving maken van de buurt op basis van de
+                gegevens hierboven.
+              </p>
+              <div className="form-row" style={{ marginBottom: "0.75rem" }}>
+                <button
+                  type="button"
+                  onClick={() => generateStory("starter")}
+                  disabled={storyLoading}
+                >
+                  {storyLoading ? "AI is bezig..." : "Maak buurtverhaal"}
+                </button>
               </div>
-            )}
-
+              {storyText && (
+                <div className="stat-card story-card">
+                  <ReactMarkdown>{storyText}</ReactMarkdown>
+                </div>
+              )}
+            </section>
           </>
-
         )}
-
       </div>
-
     </div>
-
   );
-
 }
