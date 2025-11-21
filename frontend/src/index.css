@@ -1,0 +1,138 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #0f172a;
+  color: #e5e7eb;
+}
+
+.app-shell {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 3rem;
+}
+
+.card {
+  background: rgba(15, 23, 42, 0.95);
+  border-radius: 1rem;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.8);
+  padding: 1.5rem 1.75rem;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+h1 {
+  font-size: 1.8rem;
+  margin-bottom: 0.25rem;
+}
+
+h2 {
+  font-size: 1.2rem;
+  margin: 1.5rem 0 0.5rem;
+}
+
+.subtitle {
+  color: #9ca3af;
+  font-size: 0.95rem;
+  margin-bottom: 1.5rem;
+}
+
+.form-row {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+input[type="text"] {
+  flex: 1;
+  min-width: 220px;
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid #4b5563;
+  background: rgba(15, 23, 42, 0.95);
+  color: #e5e7eb;
+}
+
+input[type="text"]::placeholder {
+  color: #6b7280;
+}
+
+button {
+  border: none;
+  border-radius: 0.75rem;
+  padding: 0.6rem 1.1rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: #22c55e;
+  color: #052e16;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.5rem 0 1rem;
+}
+
+.badge {
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  background: rgba(55, 65, 81, 0.9);
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.stat-card {
+  padding: 0.65rem 0.75rem;
+  border-radius: 0.75rem;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(55, 65, 81, 0.8);
+}
+
+.stat-label {
+  font-size: 0.8rem;
+  color: #9ca3af;
+}
+
+.stat-value {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.small {
+  font-size: 0.85rem;
+  color: #9ca3af;
+}
+
+.error {
+  color: #fecaca;
+  font-size: 0.9rem;
+  margin-top: 0.5rem;
+}
+
+/* Map */
+.map-card {
+  margin-top: 1rem;
+}
+
+.map {
+  width: 100%;
+  height: 260px;
+  border-radius: 0.75rem;
+  overflow: hidden;
+  border: 1px solid rgba(55, 65, 81, 0.8);
+}
