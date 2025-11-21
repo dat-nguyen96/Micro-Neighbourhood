@@ -1,7 +1,7 @@
 # backend/main.py
 import os
 from pathlib import Path
-from typing import Optional, Dict, Any, Tuple
+from typing import Optional, Dict, Any, Tuple, Union
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
@@ -26,13 +26,16 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 BACKEND_ENV = os.getenv("BACKEND_ENV", "local")  # bv. "local", "production"
 
-if not OPENAI_API_KEY:
-    raise RuntimeError(
-        "OPENAI_API_KEY is niet gezet. "
-        "Zet deze in .env (lokaal) of als Railway environment variable."
+# Maak client optioneel; geen harde crash bij import
+client: Optional[OpenAI] = None
+if OPENAI_API_KEY:
+    client = OpenAI(api_key=OPENAI_API_KEY)
+else:
+    # Niet crashen; alleen een waarschuwing loggen
+    print(
+        "⚠️  OPENAI_API_KEY is niet gezet. "
+        "AI-endpoints zullen een fout geven totdat deze env var is geconfigureerd."
     )
-
-client = OpenAI(api_key=OPENAI_API_KEY)
 
 # ---------- FastAPI app ----------
 
@@ -146,6 +149,10 @@ def call_openai(prompt: str, max_tokens: int = 800) -> str:
     Eenvoudige helper om een chat completion aan te roepen.
     Gooit een exception door bij fouten, zodat de endpoint dat kan afhandelen.
     """
+    if client is None:
+        # Duidelijke fout als iemand de endpoint aanroept zonder key
+        raise RuntimeError("OPENAI_API_KEY ontbreekt; AI kan niet worden aangeroepen.")
+
     try:
         completion = client.chat.completions.create(
             model=OPENAI_MODEL,
@@ -220,6 +227,9 @@ Schrijf nu:
 
     try:
         story = call_openai(prompt)
+    except RuntimeError as e:
+        # Specifiek voor ontbrekende key -> 500 met duidelijke boodschap
+        raise HTTPException(status_code=500, detail=str(e))
     except Exception:
         raise HTTPException(
             status_code=502,

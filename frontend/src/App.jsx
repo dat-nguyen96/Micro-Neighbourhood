@@ -4,6 +4,8 @@ import React, { useState, useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+import Highcharts from "highcharts";
+import HighchartsReact from "highcharts-react-official";
 
 const PDOK_FREE_URL =
   "https://api.pdok.nl/bzk/locatieserver/search/v3_1/free";
@@ -37,6 +39,19 @@ const nf0 = new Intl.NumberFormat("nl-NL", {
 const nf1 = new Intl.NumberFormat("nl-NL", {
   maximumFractionDigits: 1,
 });
+
+function incomeCategory(avgIncome) {
+  if (avgIncome == null) return null;
+  // Gemiddeld inkomen per inwoner is in duizendtallen (CBS),
+  // dus 25 betekent ~€25.000.
+  if (avgIncome < 25) {
+    return { label: "Lager dan NL-gemiddelde", level: "low" };
+  }
+  if (avgIncome < 35) {
+    return { label: "Rond NL-gemiddelde", level: "mid" };
+  }
+  return { label: "Hoger dan NL-gemiddelde", level: "high" };
+}
 
 export default function App() {
   const [query, setQuery] = useState("");
@@ -161,21 +176,42 @@ export default function App() {
               return null;
             };
 
-            const population = pick(row, [
-              "AantalInwoners_5",
-            ]);
-            const density = pick(row, [
-              "Bevolkingsdichtheid_33",
-            ]);
-            // Calculate 65+ percentage from age groups
-            const totalPopulation = row.AantalInwoners_5;
-            const over65 = row.k_65JaarOfOuder_12;
-            const pct65Plus = totalPopulation && over65 ?
-              Math.round((over65 / totalPopulation) * 100 * 10) / 10 : null;
+            const population = pick(row, ["AantalInwoners_5"]);
+            const density = pick(row, ["Bevolkingsdichtheid_33"]);
 
-            const incomePerPerson = pick(row, [
-              "GemiddeldInkomenPerInwoner_66",
-            ]);
+            // Leeftijdsgroepen (absolute aantallen)
+            const age0_15 = pick(row, ["k_0Tot15Jaar_8"]);
+            const age15_25 = pick(row, ["k_15Tot25Jaar_9"]);
+            const age25_45 = pick(row, ["k_25Tot45Jaar_10"]);
+            const age45_65 = pick(row, ["k_45Tot65Jaar_11"]);
+            const age65plus = pick(row, ["k_65JaarOfOuder_12"]);
+
+            const totalPopulation =
+              typeof population === "number" ? population : row.AantalInwoners_5;
+
+            // Percentage 65+
+            const pct65Plus =
+              totalPopulation && age65plus
+                ? Math.round((age65plus / totalPopulation) * 100 * 10) / 10
+                : null;
+
+            // Gemiddeld inkomen per inwoner (in duizend euro's)
+            const incomePerPerson = pick(row, ["GemiddeldInkomenPerInwoner_66"]);
+
+            // Income distribution: lage/hoogste inkomensgroepen
+            const pctLowIncomePersons = pick(row, ["k_40PersonenMetLaagsteInkomen_67"]); // %
+            const pctHighIncomePersons = pick(row, ["k_20PersonenMetHoogsteInkomen_68"]); // %
+
+            const pctLowIncomeHouseholds = pick(row, [
+              "HuishoudensMetEenLaagInkomen_72",
+            ]); // %
+            const pctSociaalMinimum = pick(row, ["HuishOnderOfRondSociaalMinimum_73"]); // %
+
+            // Gem. huishoudgrootte en woningvoorraad
+            const avgHouseholdSize = pick(row, ["GemiddeldeHuishoudensgrootte_32"]);
+            const totalDwellings = pick(row, ["Woningvoorraad_34"]);
+            const pctMultiFamily = pick(row, ["PercentageMeergezinswoning_37"]);
+            const pctSingleFamily = pick(row, ["PercentageEengezinswoning_36"]);
 
             cbsStats = {
               buurtCode,
@@ -183,10 +219,33 @@ export default function App() {
               density,
               pct65Plus,
               incomePerPerson,
+              // leeftijdsstructuur
+              ageGroups: {
+                age0_15,
+                age15_25,
+                age25_45,
+                age45_65,
+                age65plus,
+                total: totalPopulation,
+              },
+              // inkomen
+              income: {
+                pctLowIncomePersons,
+                pctHighIncomePersons,
+                pctLowIncomeHouseholds,
+                pctSociaalMinimum,
+              },
+              // wonen
+              housing: {
+                avgHouseholdSize,
+                totalDwellings,
+                pctMultiFamily,
+                pctSingleFamily,
+              },
             };
 
-            // Superhandig om 1x te inspecteren in de browser console:
             console.log("CBS row for buurt:", buurtCode, row);
+            console.log("Computed cbsStats:", cbsStats);
           }
         }
       }
@@ -249,6 +308,61 @@ export default function App() {
       return "n.v.t.";
     }
     return formatter.format(Number(value));
+  }
+
+  const ageGroups = result?.cbsStats?.ageGroups;
+  const incomeInfo = incomeCategory(result?.cbsStats?.incomePerPerson);
+
+  let ageChartOptions = null;
+  if (ageGroups && ageGroups.total) {
+    const { age0_15, age15_25, age25_45, age45_65, age65plus, total } =
+      ageGroups;
+
+    const toPct = (val) =>
+      typeof val === "number" && total
+        ? Math.round((val / total) * 100 * 10) / 10
+        : 0;
+
+    ageChartOptions = {
+      chart: {
+        type: "column",
+        backgroundColor: "transparent",
+      },
+      title: {
+        text: null,
+      },
+      xAxis: {
+        categories: ["0–15", "15–25", "25–45", "45–65", "65+"],
+        labels: {
+          style: { color: "#e5e7eb", fontSize: "11px" },
+        },
+      },
+      yAxis: {
+        min: 0,
+        title: {
+          text: "% van de inwoners",
+          style: { color: "#9ca3af", fontSize: "11px" },
+        },
+        labels: { style: { color: "#9ca3af", fontSize: "10px" } },
+      },
+      legend: { enabled: false },
+      credits: { enabled: false },
+      series: [
+        {
+          name: "Leeftijdsgroep",
+          data: [
+            toPct(age0_15),
+            toPct(age15_25),
+            toPct(age25_45),
+            toPct(age45_65),
+            toPct(age65plus),
+          ],
+        },
+      ],
+      tooltip: {
+        valueSuffix: " %",
+      },
+    };
   }
 
   useEffect(() => {
@@ -377,6 +491,13 @@ export default function App() {
                 {result.buildingInfo?.bouwjaar && (
                   <span className="badge">
                     Bouwjaar pand: {result.buildingInfo.bouwjaar}
+                  </span>
+                )}
+                {incomeInfo && (
+                  <span
+                    className={`badge income-badge income-${incomeInfo.level}`}
+                  >
+                    Inkomensniveau buurt: {incomeInfo.label}
                   </span>
                 )}
               </div>
@@ -519,6 +640,22 @@ export default function App() {
                 )}
               </div>
             </section>
+
+            {/* Leeftijdsopbouw */}
+            {ageChartOptions && (
+              <section className="section">
+                <h2>Leeftijdsopbouw</h2>
+                <p className="small">
+                  Verdeling van de inwoners over leeftijdsgroepen in deze buurt.
+                </p>
+                <div className="chart-card">
+                  <HighchartsReact
+                    highcharts={Highcharts}
+                    options={ageChartOptions}
+                  />
+                </div>
+              </section>
+            )}
 
             {/* AI: Buurtverhaal */}
             <section className="section">
