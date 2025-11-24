@@ -148,6 +148,7 @@ class SimilarBuurtenResponse(BaseModel):
 class ClusterInfoResponse(BaseModel):
     buurt_code: str
     buurt_naam: str     # echte buurt naam
+    gemeente_naam: str  # gemeente naam
     cluster: int
     label: str          # korte label (voor badge)
     label_long: str     # lange uitleg (voor panel)
@@ -717,6 +718,7 @@ async def buurt_cluster(
     return ClusterInfoResponse(
         buurt_code=buurt_code.strip(),
         buurt_naam=str(row.get("buurt_naam", buurt_code.strip())),
+        gemeente_naam=str(row.get("Gemeentenaam_1", "")).strip(),
         cluster=cluster_id,
         label=cluster_info["label_short"],
         label_long=cluster_info["label_long"],

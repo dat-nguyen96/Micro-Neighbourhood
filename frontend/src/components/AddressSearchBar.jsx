@@ -53,7 +53,8 @@ export default function AddressSearchBar({ onSelect, loading }) {
               if (buurtCode) {
                 // Check cache first
                 if (buurtNames.has(buurtCode)) {
-                  return { ...doc, _buurtNaam: buurtNames.get(buurtCode), _buurtCode: buurtCode };
+                  const cached = buurtNames.get(buurtCode);
+                  return { ...doc, _buurtNaam: cached.buurt_naam, _gemeenteNaam: cached.gemeente_naam, _buurtCode: buurtCode };
                 }
 
                 // Fetch buurt info
@@ -61,11 +62,12 @@ export default function AddressSearchBar({ onSelect, loading }) {
                 if (clusterResp.ok) {
                   const clusterInfo = await clusterResp.json();
                   const buurtNaam = clusterInfo.buurt_naam;
+                  const gemeenteNaam = clusterInfo.gemeente_naam;
 
                   // Update cache
-                  setBuurtNames(prev => new Map(prev).set(buurtCode, buurtNaam));
+                  setBuurtNames(prev => new Map(prev).set(buurtCode, { buurt_naam: buurtNaam, gemeente_naam: gemeenteNaam }));
 
-                  return { ...doc, _buurtNaam: buurtNaam, _buurtCode: buurtCode };
+                  return { ...doc, _buurtNaam: buurtNaam, _gemeenteNaam: gemeenteNaam, _buurtCode: buurtCode };
                 }
               }
             } catch (e) {
@@ -193,7 +195,12 @@ export default function AddressSearchBar({ onSelect, loading }) {
                   <span className="extra"> • {s.postcode}</span>
                 )}
                 {s._buurtNaam && (
-                  <div className="buurt-label">{s._buurtNaam}</div>
+                  <div className="buurt-label">
+                    {s._buurtNaam}
+                    {s._gemeenteNaam && (
+                      <span className="gemeente-badge"> • {s._gemeenteNaam}</span>
+                    )}
+                  </div>
                 )}
               </div>
             );
@@ -239,6 +246,10 @@ export default function AddressSearchBar({ onSelect, loading }) {
           font-size: 0.75rem;
           font-weight: 500;
           margin-top: 2px;
+        }
+        .dropdown-item .gemeente-badge {
+          color: #64748b;
+          font-size: 0.7rem;
         }
       `}</style>
     </div>
