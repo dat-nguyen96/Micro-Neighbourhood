@@ -57,12 +57,12 @@ FEATURE_COLUMNS = [
     "k_0Tot15Jaar_8",
     "k_25Tot45Jaar_10",
     "k_65JaarOfOuder_12",
-    # Gedetailleerde criminaliteit - 5 categorieën
-    "total_crimes",           # Totaal misdrijven
-    "crime_sexual_violence",  # Seksueel geweld/zeden
-    "crime_violence",         # Geweldsmisdrijven
-    "crime_property",         # Vermogensmisdrijven
-    "crime_vandalism"         # Vernieling/openbare orde
+    # Gedetailleerde criminaliteit - gebaseerd op wat er in clusters.csv staat
+    "total_crimes",              # Totaal misdrijven
+    "crime_sexual_violence",     # Seksueel geweld/zeden
+    "crime_violence_total",      # Totaal geweld (gecombineerd)
+    "crime_property",            # Vermogensmisdrijven
+    "crime_vandalism"            # Vernieling/openbare orde
 ]
 
 # Globale in-memory data (lazy geladen uit CSV)
