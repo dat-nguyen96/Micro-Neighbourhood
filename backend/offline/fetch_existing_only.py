@@ -55,58 +55,13 @@ DATA_DIR = Path("../data")
 RAW_DATA_CSV = DATA_DIR / "raw_data.csv"
 CLUSTERS_CSV = DATA_DIR / "clusters.csv"
 
-# === Vaste label-catalogus (8 labels) ===
-ALLOWED_LABELS = [
-    "Druk stadscentrum",
-    "Stedelijke appartementen",
-    "Rustige Vinex-wijk",
-    "Landelijke dorpskern",
-    "Studentenbuurt",
-    "Seniorenwijk",
-    "Gezinsrijke buitenwijk",
-    "Gemengde woon-werkwijk",
-]
 
-LABEL_DESCRIPTIONS = {
-    "Druk stadscentrum": (
-        "Een zeer stedelijke buurt met hoge bevolkingsdichtheid, veel voorzieningen en vaak "
-        "meer geweldsincidenten door drukte, uitgaan en toerisme."
-    ),
-    "Stedelijke appartementen": (
-        "Een stedelijke appartementenwijk met veel meergezinswoningen, relatief kleine huishoudens "
-        "en een gemengde bevolking van starters, singles en tweeverdieners."
-    ),
-    "Rustige Vinex-wijk": (
-        "Een moderne, relatief nieuwe buitenwijk met veel eengezinswoningen, gezinnen met kinderen, "
-        "gemiddelde bevolkingsdichtheid en een laag geweldsniveau."
-    ),
-    "Landelijke dorpskern": (
-        "Een weinig tot niet stedelijke buurt met lage bevolkingsdichtheid, veel ruimte, "
-        "lokale voorzieningen en vaak een gemengde leeftijdsopbouw."
-    ),
-    "Studentenbuurt": (
-        "Een sterk stedelijke buurt met veel jongeren (15–25 jaar), relatief kleine huishoudens, "
-        "veel studenten en een levendig nacht- en uitgaansleven."
-    ),
-    "Seniorenwijk": (
-        "Een rustige buurt met relatief veel 65-plussers, weinig huishoudens met kinderen en een "
-        "lager aandeel jongeren."
-    ),
-    "Gezinsrijke buitenwijk": (
-        "Een gematigd tot weinig stedelijke wijk met veel gezinnen, grotere huishoudens en veel "
-        "eengezinswoningen."
-    ),
-    "Gemengde woon-werkwijk": (
-        "Een gemengde buurt met zowel wonen als werken, gemiddelde bevolkingsdichtheid en een "
-        "mix van huishoudtypes en inkomens."
-    ),
-}
 
 # ======================================================================
 # AI HELPER: Cluster labels genereren
 # ======================================================================
 
-def generate_ai_cluster_labels(df_clean: pd.DataFrame, clusters, n_clusters: int):
+def generate_ai_cluster_labels(df_clean, clusters, n_clusters):
     """
     Genereer korte en lange labels per cluster met behulp van OpenAI.
     GPT mag ALLEEN kiezen uit ALLOWED_LABELS en moet ieder label precies één keer gebruiken.
@@ -119,8 +74,38 @@ def generate_ai_cluster_labels(df_clean: pd.DataFrame, clusters, n_clusters: int
         print("⚠️ Geen OPENAI_API_KEY gevonden, gebruik fallback cluster labels.")
         raise RuntimeError("No OPENAI_API_KEY")
 
-    # Welke features willen we samenvatten voor GPT?
-    summary_features = [
+    # --- vaste lijst van 8 labels -----------------------------
+
+    # Alleen uit deze labels mag GPT kiezen, en elk label moet precies 1x gebruikt worden.
+    allowed_labels = {
+        "Druk stadscentrum": (
+            "Zeer hoge bevolkingsdichtheid, sterk stedelijk, veel voorzieningen, weinig gezinnen met kinderen."
+        ),
+        "Stedelijke appartementen": (
+            "Hoge dichtheid, sterk stedelijk, veel meergezinswoningen/hoogbouw, veel alleenstaanden, weinig kinderen."
+        ),
+        "Studentenbuurt": (
+            "Hoge concentratie studenten en jongeren (15-25 jaar), kleine huishoudens, vaak nabij onderwijsinstellingen."
+        ),
+        "Gezinsrijke Vinex-wijk": (
+            "Nieuwe/relatief jonge woonwijken met veel eengezinswoningen, veel huishoudens met kinderen, matig tot weinig stedelijk."
+        ),
+        "Voorstedelijke gezinswijk": (
+            "Eengezinswoningen, veel gezinnen, matige bevolkingsdichtheid, rand van stad of grotere kern."
+        ),
+        "Landelijke dorpskern": (
+            "Lage bevolkingsdichtheid, weinig stedelijk, gemengde leeftijden, dorps karakter, relatief veel eigen woningen."
+        ),
+        "Seniorenwijk": (
+            "Hoog aandeel 65+, lage aandelen jongeren, vaak rustige omgeving met beperkte kinderdichtheid."
+        ),
+        "Gemengde woon-werkwijk": (
+            "Gemiddelde dichtheid, mix van wonen en werken (relatief veel bedrijven), gemengde demografie."
+        ),
+    }
+
+    # --- welke features vatten we per cluster samen? ----------
+    feature_cols_for_summary = [
         "Bevolkingsdichtheid_34",
         "violence_per_1000",
         "MateVanStedelijkheid_122",
@@ -131,95 +116,104 @@ def generate_ai_cluster_labels(df_clean: pd.DataFrame, clusters, n_clusters: int
         "PercentageMeergezinswoning_45",
         "PercentageEengezinswoning_40",
         "studenten_per_1000",
-        "GemiddeldInkomenPerInwoner_78",
+        "recent_build_share",
+        "bedrijven_per_1000",
     ]
-    summary_features = [f for f in summary_features if f in df_clean.columns]
+    # Hou alleen kolommen die echt bestaan
+    feature_cols_for_summary = [
+        c for c in feature_cols_for_summary if c in df_clean.columns
+    ]
 
-    # Maak een compacte numerieke samenvatting per cluster
+    # Maak een compacte samenvatting per cluster
     rows = []
     for cid in range(n_clusters):
         mask = clusters == cid
         sub = df_clean.loc[mask]
 
-        row = {
-            "cluster_id": cid,
-            "count": int(mask.sum()),
-        }
-
+        row_data = {"cluster_id": cid, "count": int(mask.sum())}
         if sub.empty:
-            for feat in summary_features:
-                row[feat] = 0.0
+            for col in feature_cols_for_summary:
+                row_data[col] = 0.0
         else:
-            for feat in summary_features:
-                row[feat] = round(float(sub[feat].mean()), 3)
+            for col in feature_cols_for_summary:
+                row_data[col] = float(sub[col].mean())
 
-        rows.append(row)
+        rows.append(row_data)
 
     # Bouw CSV-achtige tekst
-    header = ["cluster_id", "count"] + summary_features
+    header = ["cluster_id", "count"] + feature_cols_for_summary
     lines = [",".join(header)]
     for r in rows:
         values = [str(r["cluster_id"]), str(r["count"])]
-        for feat in summary_features:
+        for feat in feature_cols_for_summary:
             values.append(str(r[feat]))
         lines.append(",".join(values))
 
     csv_summary = "\n".join(lines)
 
-    # Uitleg features in natuurlijke taal
-    feature_expl = """
-Feature-uitleg:
-- Bevolkingsdichtheid_34: aantal inwoners per km2 (hoe hoger, hoe drukker).
-- violence_per_1000: aantal geweldsincidenten per 1.000 inwoners.
-- MateVanStedelijkheid_122: schaal 1–5 (1 = zeer sterk stedelijk, 5 = niet stedelijk/landelijk).
-- aandeel_jongeren_0_25: percentage inwoners tot en met 24 jaar.
-- aandeel_65_plus: percentage inwoners van 65 jaar en ouder.
+    # Uitleg voor GPT over de features
+    uitleg_features = """
+Feature-uitleg (kolomnamen beginnen in de CSV met 'avg_'):
+
+- Bevolkingsdichtheid_34: inwoners per km² (hoog = druk, laag = rustig/landelijk).
+- violence_per_1000: aantal geweldsincidenten per 1.000 inwoners (hoog = onveiliger).
+- MateVanStedelijkheid_122: schaal 1–5:
+    1 = zeer sterk stedelijk
+    2 = sterk stedelijk
+    3 = matig stedelijk
+    4 = weinig stedelijk
+    5 = niet stedelijk (landelijk).
+- aandeel_jongeren_0_25: aandeel bevolking 0-25 jaar (hoog = veel jongeren/kinderen).
+- aandeel_65_plus: aandeel bevolking 65+ (hoog = seniorenwijk).
 - GemiddeldeHuishoudensgrootte_33: gemiddeld aantal personen per huishouden.
-- HuishoudensMetKinderen_32: percentage huishoudens met kinderen.
+- HuishoudensMetKinderen_32: aandeel huishoudens met kinderen.
 - PercentageMeergezinswoning_45: aandeel appartementen/hoogbouw.
-- PercentageEengezinswoning_40: aandeel eengezinswoningen (rijtjes, vrijstaand, 2-onder-1-kap).
-- studenten_per_1000: aantal MBO/HBO/WO-studenten per 1.000 inwoners.
-- GemiddeldInkomenPerInwoner_78: gemiddeld inkomen per inwoner.
+- PercentageEengezinswoning_40: aandeel eengezinswoningen.
+- studenten_per_1000: aantal studenten (MBO/HBO/WO) per 1000 inwoners.
+- recent_build_share: aandeel woningen gebouwd in de afgelopen 10 jaar (hoger = nieuwer, vaak Vinex).
+- bedrijven_per_1000: aantal bedrijfsvestigingen per 1000 inwoners (hoog = meer werkfuncties).
 """
 
     label_list_text = "\n".join(
-        f"- {name}: {LABEL_DESCRIPTIONS[name]}"
-        for name in ALLOWED_LABELS
+        [f"- {name}: {desc}" for name, desc in allowed_labels.items()]
     )
 
     system_msg = (
         "Je bent een Nederlandse data-analist gespecialiseerd in woonbuurten. "
-        "Je krijgt clusters van Nederlandse buurten met een numerieke samenvatting van drukte, geweld, "
-        "stedelijkheid, leeftijdsopbouw, woningtype, studenten en inkomen. "
-        "Je taak is om voor elk cluster één label te kiezen uit een VASTE lijst van 8 woonconcepten."
+        "Je krijgt clusters van Nederlandse buurten met samenvattingen van demografie, woningvoorraad, "
+        "stedelijkheid en geweldsincidenten. "
+        "Je moet voor elk cluster één label kiezen uit een VASTE lijst van 8 labels. "
+        "Je mag GEEN nieuwe labels verzinnen. Elke labelnaam mag maar één keer gebruikt worden."
     )
 
     user_msg = f"""
-Hier is de uitleg van de features:
-{feature_expl}
 
-Hieronder staat de vaste lijst van labels waaruit je MOET kiezen.
-Je mag GEEN eigen labels verzinnen. Gebruik ieder label PRECIES één keer:
+Hier is een uitleg van de features:
+
+{uitleg_features}
+
+Hier is de lijst van toegestane labels (je mag alleen uit deze namen kiezen, elk label precies 1 keer):
 
 {label_list_text}
 
-Hieronder zie je de numerieke samenvatting per cluster:
+Hier is de numerieke samenvatting van de clusters (per cluster de gemiddelden):
 
 {csv_summary}
 
-Opdracht:
-- Er zijn 8 clusters (cluster_id 0 t/m 7) en 8 labels.
-- Koppel elk cluster aan precies één label uit de lijst.
-- Gebruik elk label exact één keer.
+OPDRACHT:
+
+- Koppel elk cluster_id aan EXACT één van de bovenstaande label-namen.
+- Gebruik elk label UITSLUITEND één keer (dus 8 clusters = 8 verschillende labels).
 - Kies de label die het beste past bij de gemiddelde kenmerken van dat cluster.
 
-Output-formaat (één cluster per regel, GEEN extra tekst):
+Geef voor iedere cluster_id precies één regel in dit formaat:
 
-cluster_id | korte_label | lange_beschrijving
+cluster_id | KORTE_LABEL | LANGE_BESCHRIJVING
 
-Waar:
-- korte_label is EXACT één van de labels uit de lijst.
-- lange_beschrijving is een Nederlandse omschrijving waarom dat label past bij het cluster.
+Waar KORTE_LABEL exact één van de 8 namen is uit de lijst:
+{", ".join(allowed_labels.keys())}
+
+Geen extra tekst, geen uitleg, geen markdown. Alleen de regels.
 """
 
     try:
@@ -251,23 +245,23 @@ Waar:
             except ValueError:
                 continue
 
-            if short_label not in ALLOWED_LABELS:
-                raise ValueError(f"Onbekend label '{short_label}' in AI-output.")
-            if short_label in used_labels:
-                raise ValueError(f"Label '{short_label}' wordt meerdere keren gebruikt.")
-            used_labels.add(short_label)
 
             cluster_labels[cid] = short_label
             cluster_labels_long[cid] = long_label
 
-        # Check of we voor alle clusters iets hebben
-        missing_ids = [cid for cid in range(n_clusters) if cid not in cluster_labels]
-        if missing_ids:
-            raise ValueError(f"Ontbrekende labels voor clusters: {missing_ids}")
+        # Validatie: alle clusters gelabeld
+        missing_clusters = [cid for cid in range(n_clusters) if cid not in cluster_labels]
+        if missing_clusters:
+            raise ValueError(f"Ontbrekende labels voor clusters: {missing_clusters}")
 
-        # Check of alle labels zijn gebruikt
-        if used_labels != set(ALLOWED_LABELS):
-            raise ValueError("Niet alle toegestane labels zijn gebruikt.")
+        # Validatie: labels komen uit allowed_labels
+        for lbl in cluster_labels.values():
+            if lbl not in allowed_labels:
+                raise ValueError(f"Onbekend label gebruikt door AI: {lbl}")
+
+        # Validatie: labels zijn uniek
+        if len(set(cluster_labels.values())) != len(cluster_labels):
+            raise ValueError("Korte labels zijn niet uniek, AI-output ongeldig.")
 
         return cluster_labels, cluster_labels_long
 
@@ -583,9 +577,9 @@ def fetch_all_data():
 
         detailed_crime_pivot = (
             crime_df.pivot_table(
-                index=regio_col,
+            index=regio_col,
                 columns="SoortMisdrijf",
-                values=crime_col,
+            values=crime_col,
                 fill_value=0,
             )
             .reset_index()
@@ -683,20 +677,22 @@ def build_clusters():
     """
     Gebruik de opgehaalde data om KMeans clusters te bouwen.
 
-    Features:
+    Clustering-features (indien aanwezig):
     - Bevolkingsdichtheid_34
-    - violence_per_1000
-    - MateVanStedelijkheid_122
+    - Geweld (incl. seksueel) per 1.000 inwoners (violence_per_1000)
+    - MateVanStedelijkheid_122 (1 = zeer stedelijk, 5 = landelijk)
     - aandeel_jongeren_0_25
     - aandeel_65_plus
     - GemiddeldeHuishoudensgrootte_33
     - HuishoudensMetKinderen_32
-    - PercentageMeergezinswoning_45
+    - PercentageMeergezinswoning_45 (appartementen)
     - PercentageEengezinswoning_40
-    - studenten_per_1000
-    - GemiddeldInkomenPerInwoner_78
+    - students_per_1000
+    - recent_build_share (nieuwbouw-aandeel -> Vinex-achtig)
+    - bedrijven_per_1000 (woon-werkwijk-gevoel)
 
-    AI geeft achteraf labels uit ALLOWED_LABELS.
+    Labels:
+    - Met AI gegenereerde korte en lange cluster-namen uit een vaste set van 8 labels.
     """
     print("=== Start cluster bouw ===")
 
@@ -718,54 +714,83 @@ def build_clusters():
     df["aandeel_jongeren_0_25"] = df.get("k_0Tot15Jaar_8", 0).fillna(0) + df.get("k_15Tot25Jaar_9", 0).fillna(0)
     df["aandeel_65_plus"] = df.get("k_65JaarOfOuder_12", 0).fillna(0)
 
-    # Studenten per 1000
-    for col in ["StudentenMboExclExtranei_64", "StudentenHbo_65", "StudentenWo_66"]:
-        if col not in df.columns:
-            df[col] = 0
-    df["studenten_totaal"] = (
-        df["StudentenMboExclExtranei_64"].fillna(0)
-        + df["StudentenHbo_65"].fillna(0)
-        + df["StudentenWo_66"].fillna(0)
-    )
-    df["studenten_per_1000"] = 0.0
-    df.loc[mask_pop, "studenten_per_1000"] = (
-        df.loc[mask_pop, "studenten_totaal"] / df.loc[mask_pop, "AantalInwoners_5"] * 1000.0
-    )
+    # --- Studenten per 1000 -------------------------------------------
 
-    # Features voor clustering
-    feature_cols = [
-        "Bevolkingsdichtheid_34",
-        "violence_per_1000",
-        "MateVanStedelijkheid_122",
-        "aandeel_jongeren_0_25",
-        "aandeel_65_plus",
+    if {"StudentenMboExclExtranei_64", "StudentenHbo_65", "StudentenWo_66"}.issubset(df.columns):
+        df["students_per_1000"] = 0.0
+        total_students = (
+            df["StudentenMboExclExtranei_64"].fillna(0) +
+            df["StudentenHbo_65"].fillna(0) +
+            df["StudentenWo_66"].fillna(0)
+        )
+        df.loc[mask_pop, "students_per_1000"] = total_students[mask_pop] / df.loc[mask_pop, "AantalInwoners_5"] * 1000.0
+    else:
+        df["students_per_1000"] = 0.0
+
+    # --- Nieuwbouw-aandeel (Vinex-achtig) -----------------------------
+
+    if {"BouwjaarAfgelopenTienJaar_52", "Woningvoorraad_35"}.issubset(df.columns):
+        df["recent_build_share"] = 0.0
+        mask_woning = df["Woningvoorraad_35"] > 0
+        df.loc[mask_woning, "recent_build_share"] = (
+            df.loc[mask_woning, "BouwjaarAfgelopenTienJaar_52"].fillna(0) /
+            df.loc[mask_woning, "Woningvoorraad_35"]
+        )
+    else:
+        df["recent_build_share"] = 0.0
+
+    # --- Bedrijven per 1000 inwoners (woon-werkmix) -------------------
+
+    if "BedrijfsvestigingenTotaal_97" in df.columns:
+        df["bedrijven_per_1000"] = 0.0
+        df.loc[mask_pop, "bedrijven_per_1000"] = (
+            df["BedrijfsvestigingenTotaal_97"].fillna(0)[mask_pop] /
+            df.loc[mask_pop, "AantalInwoners_5"] * 1000.0
+        )
+    else:
+        df["bedrijven_per_1000"] = 0.0
+
+    # --- Featurelijst voor clustering --------------------------------
+
+    candidate_features = [
+        "Bevolkingsdichtheid_34",         # drukte
+        "violence_per_1000",              # veiligheid
+        "MateVanStedelijkheid_122",       # stedelijk vs landelijk
+        "aandeel_jongeren_0_25",          # jongeren/kinderen
+        "aandeel_65_plus",                # ouderen
         "GemiddeldeHuishoudensgrootte_33",
         "HuishoudensMetKinderen_32",
         "PercentageMeergezinswoning_45",
         "PercentageEengezinswoning_40",
-        "studenten_per_1000",
-        "GemiddeldInkomenPerInwoner_78",
+        "students_per_1000",
+        "recent_build_share",
+        "bedrijven_per_1000",
     ]
 
-    # Filter op bestaande kolommen
-    feature_cols = [c for c in feature_cols if c in df.columns]
-    if not feature_cols:
-        raise ValueError("Geen geldige feature kolommen gevonden voor clustering.")
+    feature_cols = [c for c in candidate_features if c in df.columns]
+
+    if len(feature_cols) < 2:
+        raise ValueError(f"Te weinig features voor clustering. Gevonden: {feature_cols}")
+
+
 
     df_features = df[feature_cols].copy()
 
-    # Missing values vullen met 0 (veilig voor percentages en dichtheden)
-    df_features = df_features.fillna(0)
 
-    # Check of we nog data hebben
-    if df_features.empty or len(df_features) == 0:
-        raise ValueError("Geen data over na feature selectie.")
 
-    print(f"Data klaar voor clustering: {len(df_features)} rijen")
+    # Filter rijen met complete data
+
+    mask_complete = df_features.notna().all(axis=1)
+
+    df_clean = df[mask_complete].reset_index(drop=True)
+
+    df_features = df_features[mask_complete].reset_index(drop=True)
+
+
+
+    print(f"Na cleaning: {len(df_clean)} rijen over")
+
     print(f"Features gebruikt voor clustering: {feature_cols}")
-
-    # Gebruik alle data (geen extra filtering)
-    df_clean = df.copy()
 
     # Standardiseren
     scaler = StandardScaler()
@@ -780,27 +805,47 @@ def build_clusters():
     pca = PCA(n_components=2, random_state=42)
     X_pca = pca.fit_transform(X)
 
-    # AI labels
+    # === AI-clusterlabels genereren op basis van df_clean (inclusief extra kolommen) ===
+
     try:
-        ai_short, ai_long = generate_ai_cluster_labels(df, clusters, n_clusters)
+
+        ai_short, ai_long = generate_ai_cluster_labels(df_clean, clusters, n_clusters)
+
         print("AI cluster labels succesvol gegenereerd.")
+
     except Exception as e:
+
         print(f"AI label generatie mislukt: {e}")
-        print("Gebruik fallback cluster labels (volgorde van ALLOWED_LABELS).")
-        ai_short = {i: ALLOWED_LABELS[i] for i in range(n_clusters)}
-        ai_long = {i: LABEL_DESCRIPTIONS[ALLOWED_LABELS[i]] for i in range(n_clusters)}
+
+        print("Gebruik fallback cluster labels.")
+
+        ai_short = {i: f"Cluster {i}" for i in range(n_clusters)}
+
+        ai_long = {
+
+            i: "Een woonomgeving met eigen kenmerken op het gebied van bevolkingsdichtheid, stedelijkheid, demografie en geweldscriminaliteit."
+
+            for i in range(n_clusters)
+
+        }
 
     print("Cluster labels toegewezen:")
     for i in range(n_clusters):
         cluster_count = int((clusters == i).sum())
         print(f"  Cluster {i}: {ai_short[i]} ({cluster_count} buurten)")
 
-    # Resultaat dataframe - alle originele data bewaren
-    result_df_full = df.copy()
+    # Resultaat dataframe - alle originele kolommen bewaren
+
+    result_df_full = df.loc[mask_complete].reset_index(drop=True)
+
     result_df_full["cluster_id"] = clusters
+
     result_df_full["cluster_label"] = result_df_full["cluster_id"].map(ai_short)
+
     result_df_full["cluster_label_long"] = result_df_full["cluster_id"].map(ai_long)
+
     result_df_full["pca_x"] = X_pca[:, 0]
+
     result_df_full["pca_y"] = X_pca[:, 1]
 
     result_df_full.to_csv(CLUSTERS_CSV, index=False)
