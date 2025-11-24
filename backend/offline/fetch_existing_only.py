@@ -3,18 +3,31 @@
 Offline data pipeline - 2 functies:
 1. fetch_all_data() - Haalt alle data op en schrijft naar CSV
 2. build_clusters() - Gebruikt de data om clusters te bouwen
+
+Belangrijk:
+- Criminaliteit: we gebruiken alleen TOTAAL GEWELD (incl. seksueel geweld),
+  gedefinieerd als alle SoortMisdrijf codes die beginnen met '1.4.'
+- We maken een rate: violent_crimes_per_1000 = totaal geweld / inwoners * 1000
 """
 
-import pandas as pd
-import httpx
-import requests
-from pathlib import Path
-from sklearn.cluster import KMeans
-from sklearn.preprocessing import StandardScaler
-from sklearn.decomposition import PCA
-from openai import OpenAI
 import os
+from pathlib import Path
+import time
+
+import httpx
+import pandas as pd
+import requests
+from sklearn.cluster import KMeans
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
+
 from dotenv import load_dotenv
+
+# Optional: OpenAI client, nu niet gebruikt maar kan later voor clusterbeschrijvingen
+try:
+    from openai import OpenAI
+except ImportError:
+    OpenAI = None
 
 # Load environment
 env_path = Path("../.env")
@@ -26,47 +39,24 @@ DATA_DIR = Path("../data")
 RAW_DATA_CSV = DATA_DIR / "raw_data.csv"
 CLUSTERS_CSV = DATA_DIR / "clusters.csv"
 
-# OpenAI client
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY")) if os.getenv("OPENAI_API_KEY") else None
+# OpenAI client (nu ongebruikt, maar gelaten voor uitbreidbaarheid)
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY")) if (OpenAI and os.getenv("OPENAI_API_KEY")) else None
 
-# Cluster label mappings - realistische korte namen en uitgebreide beschrijvingen (8 clusters)
-CLUSTER_SHORT_NAMES = {
-    0: "Jong & Levendig",
-    1: "Vergrijzend & Groen",
-    2: "Modern & Veilig",
-    3: "Stedelijk & Risico",
-    4: "Landelijk & Rustig",
-    5: "Sociaal & Uitdagend",
-    6: "Luxueus & Afgezonderd",
-    7: "Traditioneel & Gemengd"
-}
-
-CLUSTER_LONG_DESCRIPTIONS = {
-    0: "Dynamische wijken met veel jonge bewoners en culturele diversiteit. Levendig straatleven met restaurants en cafés, maar ook hogere criminaliteit door druk sociaal leven. Geschikt voor mensen die houden van een diverse omgeving maar hogere veiligheidsrisico's accepteren.",
-    1: "Rustige woonwijken met veel oudere bewoners en groene ruimtes. Veilige straten en goede zorgvoorzieningen, maar soms gevoel van vereenzaming. Perfect voor senioren die rust zoeken, maar mogelijk minder sociale activiteiten.",
-    2: "Moderne appartementencomplexen met goede beveiliging en stedelijke voorzieningen. Schone, goed onderhouden buurten met moderne architectuur. Ideaal voor professionals die stadsleven willen combineren met veiligheid, maar vaak hogere woonkosten.",
-    3: "Drukke stedelijke centra met hoge bevolkingsdichtheid en aanzienlijke criminaliteit. Uitstekende openbaar vervoer maar ook veiligheidsrisico's door grote mensenmassa's. Geschikt voor mensen die stedelijke dynamiek willen maar hogere criminaliteit accepteren.",
-    4: "Landelijke gebieden met veel natuur en ruimte. Rustige woonomgevingen maar soms geïsoleerd gevoel en beperkte voorzieningen. Uitstekend voor mensen die natuur waarderen maar afstand tot stedelijke voorzieningen accepteren.",
-    5: "Betaalbare woonwijken met sociale cohesie maar ook hogere criminaliteit en sociale problemen. Goede gemeenschapszin maar uitdagingen met veiligheid en leefbaarheid. Voor mensen met beperkt budget die sociale samenhang waarderen boven veiligheid.",
-    6: "Luxueuze woonwijken met hoge veiligheidsnormen maar soms gevoel van uitsluiting. Moderne woningen met goede beveiliging maar hogere woonkosten en mogelijk minder sociale verbondenheid. Voor mensen die exclusiviteit en veiligheid boven betaalbaarheid stellen.",
-    7: "Traditionele woonwijken met sterke gemeenschapsbanden maar gemengde veiligheidsniveaus. Gezellige straten met lokale voorzieningen maar soms verouderde woningen en sociale uitdagingen. Ideaal voor mensen die warme gemeenschap waarderen maar verschillende leefbaarheidsniveaus accepteren."
-}
 
 def fetch_all_data():
     """
     Haal alle benodigde data op van CBS:
-    1. CBS 85984NED buurt data (ruwe buurten naar CSV)
-    2. CBS buurt namen (Identifier + Title naar CSV)
-    3. CBS crime data (47018NED)
-    4. Merge alles samen
+    1. CBS 85984NED buurt data (buurten)
+    2. CBS crime data (47018NED) -> totaal geweld (incl. seksueel) per buurt
+    3. Merge alles samen en schrijf naar CSV
     """
     print("=== Start data ophalen ===")
-
-    # Zorg dat data directory bestaat
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-    # 1. CBS 85984NED (buurt data) - schrijf eerst ruwe data naar CSV
-    print("1. CBS 85984NED (ruwe buurt data) ophalen...")
+    # =============================
+    # 1. CBS 85984NED - buurten
+    # =============================
+    print("1. CBS 85984NED (buurt data) ophalen...")
     base_url = "https://opendata.cbs.nl/ODataApi/OData/85984NED/TypedDataSet"
     all_cbs_data = []
     skip = 0
@@ -80,185 +70,105 @@ def fetch_all_data():
             batch = r.json()["value"]
             if not batch:
                 break
+
             all_cbs_data.extend(batch)
             print(f"  -> {len(all_cbs_data)} rijen opgehaald...")
             if len(batch) < batch_size:
                 break
+
             skip += batch_size
 
-    # Schrijf ruwe CBS data naar CSV
     cbs_raw_df = pd.DataFrame(all_cbs_data)
-    cbs_raw_csv = DATA_DIR / "cbs_buurten_raw_complete.csv"
-    cbs_raw_df.to_csv(cbs_raw_csv, index=False)
-    print(f"Ruwe CBS data geschreven naar {cbs_raw_csv} ({len(cbs_raw_df)} rijen)")
+    print(f"  Totaal rijen (alle regio's): {len(cbs_raw_df)}")
 
-    # 2. CBS buurt namen ophalen (Identifier + Title)
-    print("2. CBS buurt namen ophalen...")
-    namen_url = "https://datasets.cbs.nl/odata/v1/CBS/85984NED/WijkenEnBuurtenCodes"
-    namen_data = []
-    skip = 0
-
-    while namen_url:
-        print(f"  -> Pagina {skip//1000 + 1}: {namen_url}")
-        resp = requests.get(namen_url)
-        resp.raise_for_status()
-        data = resp.json()
-        batch = data.get("value", [])
-
-        # Filter alleen buurten (BU codes)
-        buurten = [row for row in batch if str(row.get("Identifier", "")).startswith("BU")]
-        namen_data.extend(buurten)
-        print(f"    -> {len(batch)} totaal, {len(buurten)} buurten")
-
-        if len(batch) < 1000:  # Laatste pagina
-            break
-
-        namen_url = data.get("@odata.nextLink")
-        skip += 1000
-
-    # Schrijf buurt namen naar CSV
-    namen_df = pd.DataFrame(namen_data)
-    if not namen_df.empty:
-        namen_keep_cols = [c for c in namen_df.columns if c in ("Identifier", "Title", "ParentTitle")]
-        namen_df = namen_df[namen_keep_cols]
-        namen_csv = DATA_DIR / "cbs_buurt_namen_85984.csv"
-        namen_df.to_csv(namen_csv, index=False)
-        print(f"Buurt namen geschreven naar {namen_csv} ({len(namen_df)} rijen)")
-
-    # 3. Filter alleen buurten uit ruwe CBS data
-    print("3. Filter alleen buurten...")
+    # Filter alleen buurten
+    print("2. Filter alleen buurten...")
     cbs_df = cbs_raw_df[cbs_raw_df["SoortRegio_2"].str.strip() == "Buurt"].copy()
-    print(f"Na filtering buurten: {len(cbs_df)} rijen")
+    print(f"  Na filtering buurten: {len(cbs_df)} rijen")
 
-    # Schrijf gefilterde buurt data naar CSV
-    buurten_csv = DATA_DIR / "cbs_buurten_raw_buurten.csv"
-    cbs_df.to_csv(buurten_csv, index=False)
-    print(f"Gefilterde buurt data geschreven naar {buurten_csv}")
-
-    # 4. CBS 47018NED (crime data)
-    print("4. CBS 47018NED (crime) ophalen...")
+    # =============================
+    # 2. CBS 47018NED - misdrijven
+    # =============================
+    print("3. CBS 47018NED (crime) ophalen...")
 
     crime_url = "https://dataderden.cbs.nl/ODataApi/OData/47018NED/TypedDataSet"
 
-    # Check beschikbare perioden eerst
+    # 2a. Beschikbare perioden
     print("  -> Controleren beschikbare perioden...")
     meta_url = "https://dataderden.cbs.nl/ODataApi/OData/47018NED/Perioden"
     resp_meta = requests.get(meta_url)
     resp_meta.raise_for_status()
     periods = [r["Key"] for r in resp_meta.json()["value"]]
-    print(f"  -> Beschikbare perioden: {periods[:10]}...")
+    print(f"  -> Eerste periodes: {periods[:10]}")
 
-    # Zoek periode met gedetailleerde crime data (niet alleen totals)
+    # Kies meest recente jaarcijfer (JJ00) met gedetailleerde data
     print("  -> Zoeken naar periode met gedetailleerde crime data...")
     crime_period = None
-
-    # Test elke periode van nieuw naar oud
     for period in reversed(periods):
         if not period.endswith("JJ00"):
             continue
 
         print(f"    Testen periode {period}...")
-        test_params = {"$filter": f"Perioden eq '{period}' and SoortMisdrijf ne '0.0.0 '", "$top": 1}
+        test_params = {
+            "$filter": f"Perioden eq '{period}' and SoortMisdrijf ne '0.0.0 '",
+            "$top": 1,
+        }
         test_resp = requests.get(crime_url, params=test_params)
+        if test_resp.status_code != 200:
+            print(f"    ❌ Error {test_resp.status_code}")
+            continue
 
-        if test_resp.status_code == 200:
-            test_data = test_resp.json()
-            if test_data.get("value"):  # Heeft gedetailleerde data
-                crime_period = period
-                print(f"    ✅ Periode {period} heeft gedetailleerde data!")
-                break
-            else:
-                print(f"    ❌ Periode {period} heeft alleen totals")
+        test_data = test_resp.json().get("value", [])
+        if test_data:
+            crime_period = period
+            print(f"    ✅ Periode {period} heeft gedetailleerde data")
+            break
         else:
-            print(f"    ❌ Periode {period} error: {test_resp.status_code}")
+            print(f"    ❌ Periode {period} heeft alleen totalen")
 
-        # Kleine pauze tussen requests
-        import time
         time.sleep(0.2)
 
     if not crime_period:
-        print("  -> Geen periode gevonden met gedetailleerde data, gebruik meest recente voor totals")
+        print("  -> Geen periode met gedetailleerde data gevonden, gebruik meest recente JJ00")
         crime_period = next((p for p in reversed(periods) if p.endswith("JJ00")), periods[-1])
 
-    print(f"  -> Gebruik periode: {crime_period}")
+    print(f"  -> Gekozen crime periode: {crime_period}")
 
-    crime_data = []
-    skip = 0
+    # 2b. SoortMisdrijf mapping ophalen
+    print("  -> SoortMisdrijf mapping ophalen...")
+    misdrijf_url = "https://dataderden.cbs.nl/ODataApi/OData/47018NED/SoortMisdrijf"
+    misdrijf_resp = requests.get(misdrijf_url)
+    misdrijf_resp.raise_for_status()
+    misdrijf_data = misdrijf_resp.json()["value"]
 
-    # CBS ODataApi limiet: we moeten slim filteren om alle categorieën te krijgen
-    # In plaats van alles ophalen, filteren we op specifieke categorieën
-    print("  -> Ophalen gedetailleerde crime categorieën...")
+    # We definiëren geweld: ALLE 1.4.x (incl. 1.4.1, 1.4.2 -> seksueel geweld)
+    violent_keys_raw = []
+    for item in misdrijf_data:
+        raw_key = item["Key"]      # bevat trailing spatie
+        key = raw_key.strip()      # voor prefix check
+        if key.startswith("1.4."):
+            violent_keys_raw.append(raw_key)
 
-    # Haal eerst de mapping van misdrijf soorten op
-    try:
-        misdrijf_url = "https://dataderden.cbs.nl/ODataApi/OData/47018NED/SoortMisdrijf"
-        misdrijf_resp = requests.get(misdrijf_url)
-        misdrijf_resp.raise_for_status()
-        misdrijf_data = misdrijf_resp.json()["value"]
+    violent_keys_raw = list(set(violent_keys_raw))
+    print(f"  -> {len(violent_keys_raw)} geweld-categorieën gevonden (1.4.x)")
+    print(f"     Voorbeelden: {[k.strip() for k in violent_keys_raw[:5]]}")
 
-        # Selecteer categorieën volgens gedetailleerde indeling
-        # MisdrijvenTotaal: 0.0.0 (totaal)
-        # SeksueelGeweld: 1.4.1, 1.4.2 (zedenmisdrijven)
-        # Geweldsmisdrijven: overige 1.4.x (bedreiging, mishandeling, moord, straatroof, overvallen, openlijk geweld)
-        # Vermogensmisdrijven: 1.1.x, 1.2.x (diefstal, inbraak)
-        # Vernieling/OpenbareOrde: 2.2.1, 3.6.4, 3.7.x (vernieling, discriminatie, etc.)
+    # 2c. Data ophalen voor alle geweld categorieën
+    print("  -> Ophalen misdrijvendata voor geweldscategorieën...")
+    crime_rows = []
 
-        total_keys = []        # 0.0.0 - totaal misdrijven
-        sexual_violence_keys = []  # 1.4.1, 1.4.2 - seksueel geweld/zeden
-        violence_keys = []    # Overige 1.4.x - geweldmisdrijven
-        property_keys = []    # 1.1.x, 1.2.x - vermogensmisdrijven
-        vandalism_keys = []   # 2.2.1, 3.6.4, 3.7.x - vernieling, openbare orde
-
-        for item in misdrijf_data:
-            raw_key = item["Key"]  # Bewaar spaties voor API filter
-            key = raw_key.strip()  # Voor prefix checks
-
-            if key == "0.0.0":
-                total_keys.append(raw_key)
-            elif key in ['1.4.1', '1.4.2']:
-                sexual_violence_keys.append(raw_key)
-            elif key.startswith('1.4.'):
-                violence_keys.append(raw_key)
-            elif key.startswith(('1.1.', '1.2.')):
-                property_keys.append(raw_key)
-            elif key in ['2.2.1', '3.6.4'] or key.startswith('3.7.'):
-                vandalism_keys.append(raw_key)
-
-        # Combineer alle categorieën
-        detailed_categories = total_keys + sexual_violence_keys + violence_keys + property_keys + vandalism_keys
-        detailed_categories = list(set(detailed_categories))  # Unieke categorieën
-
-        print(f"  -> {len(detailed_categories)} categorieën geselecteerd")
-        print(f"  -> Totaal: {len(total_keys)}, Seksueel geweld: {len(sexual_violence_keys)}, Geweld: {len(violence_keys)}, Vermogens: {len(property_keys)}, Vernieling: {len(vandalism_keys)}")
-        print(f"  -> Voorbeelden: {detailed_categories[:5]}")
-
-    except Exception as e:
-        print(f"  -> Kon misdrijf mapping niet ophalen: {e}")
-        # Fallback naar handmatig geselecteerde belangrijke categorieën (met spaties voor API)
-        detailed_categories = [
-            "0.0.0 ",  # Totaal misdrijven
-            "1.4.1 ", "1.4.2 ",  # Seksueel geweld
-            "1.4.3 ", "1.4.5 ", "1.4.6 ", "1.4.7 ",  # Geweldmisdrijven
-            "1.1.1 ", "1.1.2 ", "1.2.1 ", "1.2.2 ",  # Vermogensmisdrijven
-            "2.2.1 ", "3.6.4 ", "3.7.1 "  # Vernieling/openbare orde
-        ]
-
-    # Haal data op per categorie om API limiet te omzeilen
-    print(f"  -> Ophalen data voor {len(detailed_categories)} categorieën...")
-    for cat in detailed_categories:
-        print(f"  -> Ophalen categorie {cat.strip()}...")
-        cat_data = []
+    for cat in violent_keys_raw:
+        print(f"    Categorie {cat.strip()} ophalen...")
         cat_skip = 0
-
-        while True:  # Haal alle data voor deze categorie
+        while True:
             params = {
                 "$filter": f"Perioden eq '{crime_period}' and SoortMisdrijf eq '{cat}'",
                 "$skip": cat_skip,
-                "$top": batch_size
+                "$top": batch_size,
             }
             resp = requests.get(crime_url, params=params)
-
             if resp.status_code != 200:
+                print(f"      ❌ HTTP {resp.status_code}, stoppen voor deze categorie.")
                 break
 
             data = resp.json()
@@ -266,201 +176,112 @@ def fetch_all_data():
             if not batch:
                 break
 
-            cat_data.extend(batch)
+            crime_rows.extend(batch)
             if len(batch) < batch_size:
                 break
 
             cat_skip += batch_size
 
-        crime_data.extend(cat_data)
-        print(f"    -> {len(cat_data)} rijen voor categorie {cat}")
+        time.sleep(0.3)
 
-        # Pauze om API niet te overbelasten
-        import time
-        time.sleep(0.5)
+    print(f"  -> Totaal misdrijfrijen (geweld): {len(crime_rows)}")
 
-    print(f"Totaal gedetailleerde crime data: {len(crime_data)} rijen")
-
-    # Gebruik alle opgehaalde data
-    if crime_data:
-        crime_df = pd.DataFrame(crime_data)
-        print(f"Crime categorieën opgehaald: {crime_df['SoortMisdrijf'].unique()}")
+    if not crime_rows:
+        print("  ⚠️ Geen misdrijvendata gevonden, pipeline gaat verder zonder crime feature.")
+        merged_df = cbs_df.copy()
+        merged_df["violent_crimes_total"] = 0
+        merged_df["violent_crimes_per_1000"] = 0.0
     else:
-        crime_df = pd.DataFrame()
+        crime_df = pd.DataFrame(crime_rows)
+        print(f"  Crime columns: {list(crime_df.columns)}")
 
-    # 5. Crime data naar CSV
-    if crime_data:
-        crime_df = pd.DataFrame(crime_data)
-        crime_raw_csv = DATA_DIR / f"cbs_crime_raw_{crime_period}.csv"
-        crime_df.to_csv(crime_raw_csv, index=False)
-        print(f"Crime data geschreven naar {crime_raw_csv} ({len(crime_df)} rijen)")
-
-    # 6. Merge buurt data met gedetailleerde crime data
-    print("6. Data combineren met gedetailleerde criminaliteit...")
-
-    if crime_data:
-        print(f"Crime columns: {crime_df.columns.tolist()}")
-
-        # Check welke kolom de regiocode bevat
+        # 2d. Bepaal regiocode-kolom en misdrijf-kolom
         regio_col = None
         for col in ["WijkenEnBuurten", "RegioS", "Regiocode"]:
             if col in crime_df.columns:
                 regio_col = col
                 break
 
-        if not regio_col:
-            print("ERROR: Geen regiokolom gevonden in crime data!")
-            return
+        if regio_col is None:
+            raise RuntimeError("Geen regiokolom gevonden in crime data")
 
-        # Check welke kolom de misdrijvencount bevat
         crime_col = None
         for col in ["GeregistreerdeMisdrijven_1", "TotaalMisdrijven", "MisdrijvenTotaal"]:
             if col in crime_df.columns:
                 crime_col = col
                 break
 
-        if not crime_col:
-            print("ERROR: Geen misdrijfenkolom gevonden in crime data!")
-            return
+        if crime_col is None:
+            raise RuntimeError("Geen misdrijf-telkolom gevonden in crime data")
 
-        print(f"Gebruik regio kolom: {regio_col}, crime kolom: {crime_col}")
+        print(f"  -> Gebruik regio kolom: {regio_col}, misdrijf kolom: {crime_col}")
 
-        # Categoriseer misdrijven volgens CBS mapping
-        def categorize_crime(soort_code):
-            """Categoriseer misdrijf volgens gedetailleerde indeling"""
-            code = str(soort_code).strip()
-            if code == "0.0.0":
-                return 'total_crimes'
-            elif code in ['1.4.1', '1.4.2']:
-                return 'sexual_violence'
-            elif code.startswith('1.4'):  # Overige 1.4.x (geweldmisdrijven)
-                return 'violence'
-            elif code.startswith('1.1') or code.startswith('1.2'):  # Vermogensmisdrijven
-                return 'property'
-            elif code in ['2.2.1'] or code in ['3.6.4'] or code.startswith('3.7'):  # Vernieling, openbare orde
-                return 'vandalism'
-            else:
-                return 'other'
+        # 2e. Totaal geweld per buurt (som over alle 1.4.x)
+        crime_agg = (
+            crime_df.groupby(regio_col)[crime_col]
+            .sum()
+            .reset_index()
+            .rename(columns={regio_col: "WijkenEnBuurten", crime_col: "violent_crimes_total"})
+        )
 
-        # Voeg categorie toe aan crime data
-        crime_df['crime_category'] = crime_df['SoortMisdrijf'].apply(categorize_crime)
+        print(f"  -> {len(crime_agg)} buurten met geweld-data")
 
-        # BEHOUD ORIGINELE GEDETAILLEERDE DATA voor tooltips
-        # Maak een pivot table met alle individuele categorieën
-        detailed_crime_pivot = crime_df.pivot_table(
-            index=regio_col,
-            columns='SoortMisdrijf',
-            values=crime_col,
-            fill_value=0
-        ).reset_index()
-
-        # Hernoem kolommen voor betere leesbaarheid
-        rename_dict = {regio_col: "WijkenEnBuurten"}
-        for col in detailed_crime_pivot.columns:
-            if col != "WijkenEnBuurten" and str(col).strip():
-                # Maak kolomnamen als "crime_1_4_1", "crime_1_4_2", etc.
-                clean_code = str(col).strip().replace('.', '_')
-                rename_dict[col] = f"crime_{clean_code}"
-
-        detailed_crime_pivot = detailed_crime_pivot.rename(columns=rename_dict)
-
-        # Aggregeer per buurt en categorie (voor clustering)
-        crime_agg = crime_df.groupby([regio_col, 'crime_category'])[crime_col].sum().unstack(fill_value=0).reset_index()
-        crime_agg = crime_agg.rename(columns={
-            regio_col: "WijkenEnBuurten",
-            'total_crimes': 'total_crimes',  # Totaal misdrijven
-            'sexual_violence': 'crime_sexual_violence',  # Seksueel geweld
-            'violence': 'crime_violence',  # Geweldmisdrijven
-            'property': 'crime_property',  # Vermogensmisdrijven
-            'vandalism': 'crime_vandalism'  # Vernieling/openbare orde
-        })
-
-        # Voeg totaal toe als fallback (som van alle categorieën)
-        crime_cols = [col for col in crime_agg.columns if col.startswith('crime_') and col != 'total_crimes']
-        if 'total_crimes' not in crime_agg.columns:
-            crime_agg['total_crimes'] = crime_agg[crime_cols].sum(axis=1)
-
-        # COMBINEER: Voeg gedetailleerde kolommen toe aan aggregatie
-        crime_agg = crime_agg.merge(detailed_crime_pivot, on="WijkenEnBuurten", how="left")
-
-        print(f"Gedetailleerde crime aggregatie:")
-        print(f"  - Totaal misdrijven: {crime_agg['total_crimes'].sum()}")
-        print(f"  - Seksueel geweld: {crime_agg.get('crime_sexual_violence', pd.Series([0])).sum()}")
-        print(f"  - Geweldsmisdrijven: {crime_agg.get('crime_violence', pd.Series([0])).sum()}")
-        print(f"  - Vermogensmisdrijven: {crime_agg.get('crime_property', pd.Series([0])).sum()}")
-        print(f"  - Vernieling/openbare orde: {crime_agg.get('crime_vandalism', pd.Series([0])).sum()}")
-
-        # Merge met buurt data
+        # 2f. Merge met buurt-data
         merged_df = cbs_df.merge(crime_agg, on="WijkenEnBuurten", how="left")
-    else:
-        print("Geen crime data gevonden, voeg lege kolommen toe")
-        merged_df = cbs_df.copy()
-        merged_df["total_crimes"] = 0
-        merged_df["crime_sexual_violence"] = 0
-        merged_df["crime_violence"] = 0
-        merged_df["crime_property"] = 0
-        merged_df["crime_vandalism"] = 0
+        merged_df["violent_crimes_total"] = merged_df["violent_crimes_total"].fillna(0)
 
-    # Fill NaN met 0
-    crime_columns = ["total_crimes", "crime_sexual_violence", "crime_violence", "crime_property", "crime_vandalism"]
-    for col in crime_columns:
-        merged_df[col] = merged_df[col].fillna(0)
+        # 2g. Maak rate per 1.000 inwoners
+        if "AantalInwoners_5" in merged_df.columns:
+            merged_df["violent_crimes_per_1000"] = (
+                merged_df["violent_crimes_total"] / merged_df["AantalInwoners_5"].replace(0, pd.NA)
+            ) * 1000
+            merged_df["violent_crimes_per_1000"] = merged_df["violent_crimes_per_1000"].fillna(0)
+        else:
+            print("  ⚠️ Kolom 'AantalInwoners_5' niet gevonden, geen rate mogelijk.")
+            merged_df["violent_crimes_per_1000"] = 0.0
 
-    # Controleer eindresultaat
-    nonzero_crimes = (merged_df["total_crimes"] > 0).sum()
-    print(f"Aantal rijen met niet-0 crimes: {nonzero_crimes}")
-    if nonzero_crimes > 0:
-        print("Top 5 hoogste total crime counts:")
-        top5 = merged_df[["WijkenEnBuurten", "total_crimes", "crime_sexual_violence", "crime_violence", "crime_property", "crime_vandalism"]].sort_values("total_crimes", ascending=False).head()
-        print(top5.to_string(index=False))
-
-    # Schrijf naar CSV
+    # =============================
+    # 3. Schrijf naar CSV
+    # =============================
+    print("4. Eindresultaat schrijven naar CSV...")
     merged_df.to_csv(RAW_DATA_CSV, index=False)
     print(f"=== Gedetailleerde data geschreven naar {RAW_DATA_CSV} ({len(merged_df)} rijen) ===")
 
+
 def build_clusters():
     """
-    Gebruik de opgehaalde data om KMeans clusters te bouwen
+    Gebruik de opgehaalde data om KMeans clusters te bouwen.
+    We gebruiken demografische kenmerken + violent_crimes_per_1000 als enige crime feature.
+    Clusterlabels worden data-gedreven toegekend (niet hard gekoppeld aan cluster-ID).
     """
     print("=== Start cluster bouw ===")
 
-    # Lees data
     df = pd.read_csv(RAW_DATA_CSV)
     print(f"Data geladen: {len(df)} rijen")
 
-    # Feature kolommen inclusief gedetailleerde criminaliteit
+    # Basis feature kolommen
     feature_cols = [
-        "AantalInwoners_5", "Bevolkingsdichtheid_34", "GemiddeldeHuishoudensgrootte_33",
-        "HuishoudensMetKinderen_32", "HuishoudensTotaal_29", "MateVanStedelijkheid_122",
-        "k_0Tot15Jaar_8", "k_15Tot25Jaar_9", "k_25Tot45Jaar_10", "k_45Tot65Jaar_11", "k_65JaarOfOuder_12"
+        "AantalInwoners_5",
+        "Bevolkingsdichtheid_34",
+        "GemiddeldeHuishoudensgrootte_33",
+        "HuishoudensMetKinderen_32",
+        "HuishoudensTotaal_29",
+        "MateVanStedelijkheid_122",
+        "k_0Tot15Jaar_8",
+        "k_15Tot25Jaar_9",
+        "k_25Tot45Jaar_10",
+        "k_45Tot65Jaar_11",
+        "k_65JaarOfOuder_12",
     ]
 
-    # Voeg gedetailleerde crime data toe
-    crime_features = []
-    if "crime_sexual_violence" in df.columns and df["crime_sexual_violence"].notna().any():
-        feature_cols.append("crime_sexual_violence")
-        crime_features.append("crime_sexual_violence")
-    if "crime_violence" in df.columns and df["crime_violence"].notna().any():
-        feature_cols.append("crime_violence")
-        crime_features.append("crime_violence")
-    if "crime_property" in df.columns and df["crime_property"].notna().any():
-        feature_cols.append("crime_property")
-        crime_features.append("crime_property")
-    if "crime_vandalism" in df.columns and df["crime_vandalism"].notna().any():
-        feature_cols.append("crime_vandalism")
-        crime_features.append("crime_vandalism")
-
-    if crime_features:
-        print(f"Gedetailleerde crime features toegevoegd: {crime_features}")
+    # Voeg onze enige crime feature toe
+    if "violent_crimes_per_1000" in df.columns:
+        feature_cols.append("violent_crimes_per_1000")
+        print("Feature 'violent_crimes_per_1000' toegevoegd.")
     else:
-        # Fallback naar total_crimes als gedetailleerde data niet beschikbaar is
-        if "total_crimes" in df.columns and df["total_crimes"].notna().any():
-            feature_cols.append("total_crimes")
-            print("Total crime data toegevoegd aan features")
-        else:
-            print("Geen crime data beschikbaar - clusters zonder crime features")
-
-    # Filter rijen met alle features
+        print("⚠️ 'violent_crimes_per_1000' niet gevonden, clustering zonder crime-feature.")
+    
+    # Filter rijen met complete features
     df_features = df[feature_cols].copy()
     mask = df_features.notna().all(axis=1)
     df_clean = df[mask].reset_index(drop=True)
@@ -469,7 +290,7 @@ def build_clusters():
     print(f"Na cleaning: {len(df_clean)} rijen")
     print(f"Features gebruikt: {feature_cols}")
 
-    # Standardize
+    # Schalen
     scaler = StandardScaler()
     X = scaler.fit_transform(df_features)
 
@@ -482,34 +303,69 @@ def build_clusters():
     pca = PCA(n_components=2, random_state=42)
     X_pca = pca.fit_transform(X)
 
-    # Gebruik predefined catchy cluster labels
-    cluster_labels = {}
-    cluster_labels_long = {}
+    # -----------------------------
+    # Data-gedreven clusterlabels
+    # -----------------------------
+    cluster_stats = df_clean.copy()
+    cluster_stats["cluster_id"] = clusters
 
-    for i in range(n_clusters):
-        # Gebruik predefined korte naam of fallback naar "Cluster X"
-        short_name = CLUSTER_SHORT_NAMES.get(i, f"Cluster {i}")
-        long_desc = CLUSTER_LONG_DESCRIPTIONS.get(i, f"Een woonomgeving met specifieke karakteristieken die aansluit bij verschillende leefstijlen en behoeften.")
+    # Gemiddelde stedelijkheid en geweld per cluster
+    stats = (
+        cluster_stats.groupby("cluster_id")[["MateVanStedelijkheid_122", "violent_crimes_per_1000"]]
+        .mean()
+        .reset_index()
+    )
 
-        cluster_labels[i] = short_name
-        cluster_labels_long[i] = long_desc
+    # Hoog/laag geweld & stedelijkheid bepalen
+    # (simpel: sorteren en ranken)
+    stats["violence_rank"] = stats["violent_crimes_per_1000"].rank(method="dense")
+    stats["urban_rank"] = stats["MateVanStedelijkheid_122"].rank(method="dense")
 
-    print("Cluster labels toegewezen:")
-    for i in range(n_clusters):
-        cluster_count = (clusters == i).sum()
-        print(f"  Cluster {i}: {cluster_labels[i]} ({cluster_count} buurten)")
+    # Nu eenvoudige heuristiek voor labels:
+    # - hoogste violence & hoogste urban -> "Stedelijk & Risico"
+    # - laagste violence & laagste urban -> "Landelijk & Rustig"
+    # - hoge urban, lage violence -> "Modern & Veilig"
+    # - etc.
+
+    # Cluster id met hoogste violence & urban
+    high_risk = stats.sort_values(["violence_rank", "urban_rank"], ascending=False).iloc[0]["cluster_id"]
+    # Laagste violence & urban
+    rural_safe = stats.sort_values(["violence_rank", "urban_rank"], ascending=True).iloc[0]["cluster_id"]
+    # Hoge urban, lage violence
+    urban_safe = stats.sort_values(["urban_rank", "violence_rank"], ascending=[False, True]).iloc[0]["cluster_id"]
+    # Lage urban, lage violence maar wat ouder
+    rural_older = stats.sort_values(["urban_rank", "violence_rank"], ascending=[True, True]).iloc[0]["cluster_id"]
+
+    # Basismapping, overige clusters krijgen generieke namen
+    cluster_short_names = {}
+    for cid in stats["cluster_id"]:
+        cluster_short_names[cid] = f"Cluster {cid}"  # default
+
+    cluster_short_names[high_risk] = "Stedelijk & Risico"
+    cluster_short_names[rural_safe] = "Landelijk & Rustig"
+    cluster_short_names[urban_safe] = "Modern & Veilig"
+    cluster_short_names[rural_older] = "Vergrijzend & Groen"
+
+    print("Clusterlabels (data-gedreven) toegewezen:")
+    for _, row in stats.iterrows():
+        cid = int(row["cluster_id"])
+        print(
+            f"  Cluster {cid}: {cluster_short_names[cid]} "
+            f"(stedelijkheid ~ {row['MateVanStedelijkheid_122']:.1f}, "
+            f"geweld/1000 ~ {row['violent_crimes_per_1000']:.2f})"
+        )
 
     # Resultaat dataframe
     result_df = df_clean.copy()
     result_df["cluster_id"] = clusters
-    result_df["cluster_label"] = result_df["cluster_id"].map(cluster_labels)
-    result_df["cluster_label_long"] = result_df["cluster_id"].map(cluster_labels_long)
+    result_df["cluster_label"] = result_df["cluster_id"].map(cluster_short_names)
     result_df["pca_x"] = X_pca[:, 0]
     result_df["pca_y"] = X_pca[:, 1]
 
     # Schrijf naar CSV
     result_df.to_csv(CLUSTERS_CSV, index=False)
     print(f"=== Clusters geschreven naar {CLUSTERS_CSV} ({len(result_df)} rijen, {n_clusters} clusters) ===")
+
 
 if __name__ == "__main__":
     import sys
@@ -521,8 +377,8 @@ if __name__ == "__main__":
         elif command == "build":
             build_clusters()
         else:
-            print("Gebruik: python fetch_existing_only.py [fetch|build]")
+            print("Gebruik: python script.py [fetch|build]")
     else:
         print("Gebruik:")
-        print("  python fetch_existing_only.py fetch    # Haal data op")
-        print("  python fetch_existing_only.py build    # Bouw clusters")
+        print("  python script.py fetch    # Haal data op")
+        print("  python script.py build    # Bouw clusters")
