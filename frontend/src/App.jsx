@@ -896,7 +896,7 @@ export default function App() {
 
             {/* MAP + STATS + AI/ML INSIGHTS */}
             <section className="section insights-grid">
-              {/* Left: big map + PCA chart */}
+              {/* Left: big map */}
               <div className="insights-map-column">
                 {result.coords && (
                   <div className="map-card">
@@ -907,15 +907,6 @@ export default function App() {
                   </div>
                 )}
 
-                {/* PCA chart - moved here under the map */}
-                {pcaChartOptions && (
-                  <div className="stat-card" style={{ marginTop: "1rem" }}>
-                    <HighchartsReact
-                      highcharts={Highcharts}
-                      options={pcaChartOptions}
-                    />
-                  </div>
-                )}
               </div>
 
               {/* Right: panels */}
