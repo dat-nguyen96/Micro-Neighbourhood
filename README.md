@@ -2,70 +2,87 @@
 
  **🌐 Live op Railway:** [micro-neighbourhood-production-4237.up.railway.app](https://micro-neighbourhood-production-4237.up.railway.app/)
 
-**In één scherm:** adres, pand, buurtcijfers, AI-buurtverhaal, cluster classificatie en vergelijkbare buurten via machine learning!
+**In één scherm:** adres, pand, buurtcijfers, AI-buurtverhaal, cluster classificatie, vergelijkbare buurten via machine learning, en directe buurtvergelijking met radar charts!
 
-Een moderne webapp die Nederlandse wijken analyseert met PDOK adressen, CBS demografische data, KMeans clustering van alle 5000+ buurten, KNN buurtvergelijking en AI-gestuurde verhalen verrijkt met ML-context.
+Een moderne webapp die Nederlandse wijken analyseert met PDOK adressen, CBS demografische data, KMeans clustering van alle 5000+ buurten, KNN buurtvergelijking, buurt-omlijning, en AI-gestuurde verhalen verrijkt met ML-context. Vergelijk twee buurten visueel met interactieve radar charts en sync zoom kaarten.
 
 ## ✨ Features
 
-### 🔍 Adres Zoeken
-- PDOK Locatieserver integratie voor nauwkeurige adreszoekfunctie
-- Nederlandse adressen met autocomplete ondersteuning
+### 🔍 Intelligente Adres Zoeken
+- **PDOK Locatieserver** integratie voor nauwkeurige adreszoekfunctie
+- **Live autocomplete** met buurt namen in dropdown (bijv. "Damrak 1, Amsterdam • Stadsdriehoek")
+- **Keyboard navigatie** (↑↓ Enter) voor snelle selectie
+- **Direct zoeken** bij Enter toets of klik op suggestie
 - BAG pand-geometrie visualisatie
 
 ### 📊 Uitgebreide Buurt Statistieken
-- CBS Kerncijfers Wijken en Buurten (volledige dataset)
-- Bevolking, dichtheid, leeftijdsgroepen, inkomen, huishoudens
-- Huishoudsamenstelling, woningtypes, voorzieningen afstanden
-- **CBS Politie Criminaliteit 2024** - Geregistreerde misdrijven per buurt
+- **CBS Kerncijfers Wijken en Buurten** (volledige dataset - 11+ features)
+- Bevolking, dichtheid, leeftijdsgroepen, inkomen per persoon/huishouden
+- Huishoudsamenstelling, woningtypes, stedelijkheid indicator
+- **Voorzieningen afstanden:** Supermarkt, huisarts, school, kinderdagverblijf (in km)
+- **CBS Politie Criminaliteit 2024** - Gewelds- en vermogensmisdrijven per 1000 inwoners
 - Nederlandse locale formatting en visualisaties
 
-### 🗺️ Moderne Interactieve Kaart
-- MapLibre GL integratie met OpenStreetMap
+### 🗺️ Moderne Interactieve Kaarten (Dubbel)
+- **MapLibre GL** integratie met OpenStreetMap tiles
+- **Dubbele kaart layout:** Hoofd buurt + vergelijkingsbuurt
+- **Sync zoom & pan** tussen beide kaarten
+- **Buurt-omlijning polygons** van PDOK WFS (hele buurtgrenzen)
 - Markers op exacte adressen + BAG pand polygons
 - Zoom, pan en geolocatie controls
-- Moderne state-of-the-art mapping experience
 
-### 🤖 AI & Machine Learning
-- **OpenAI GPT-4 integratie** voor buurtbeschrijvingen met ML-context
-- **KMeans clustering** van alle Nederlandse buurten (8 clusters)
-- **KNN recommender** voor vergelijkbare buurten
+### 🤖 AI & Machine Learning (Geavanceerd)
+- **OpenAI GPT-4o-mini** integratie voor buurtbeschrijvingen met ML-context
+- **KMeans clustering** van alle Nederlandse buurten (12 clusters)
+- **KNN recommender** voor vergelijkbare buurten met buurt namen
 - **LLM-gegenereerde labels** voor cluster interpretatie
-- **AI verhalen verrijkt met cluster data** voor diepere inzichten
+- **AI verhalen verrijkt met cluster data** en vergelijkbare buurten
 - Persoonlijke verhalen + data-driven inzichten
 
-### 📈 Data Visualisaties
+### 📈 Data Visualisaties (Uitgebreid)
+- **Radar comparison chart** voor buurtvergelijking (6 dimensies)
 - **Leeftijdsverdelingscharts** (Highcharts)
 - **Inkomensverdelingsanalyse** (Highcharts)
 - **PCA scatter plot** voor ML-ruimte visualisatie
 - **Cluster classificatie** met begrijpelijke labels
-- **Vergelijkbare buurten lijst** met bevolkingsdata
+- **Vergelijkbare buurten lijst** met echte buurt namen en bevolkingsdata
+
+### 🔄 Directe Buurtvergelijking
+- **Tweede zoekbalk** voor vergelijkingsbuurt
+- **Side-by-side stats vergelijking** met verschil indicatoren
+- **Visuele radar chart** voor multi-dimensionele vergelijking
+- **Synchrone kaarten** met buurtgrenzen en markers
+- **Realtime updates** bij nieuwe zoekopdrachten
 
 ## Tech Stack
 
 ### Frontend
-- React 18 - Moderne UI componenten
-- Vite - Snelle development server met proxy configuratie
-- MapLibre GL - Moderne interactieve kaarten
-- Highcharts - Professionele data visualisaties
-- React Markdown - Mooie AI content rendering
-- CSS Grid/Flexbox - Moderne responsive layouts
+- **React 18** - Moderne UI componenten met hooks
+- **Vite** - Snelle development server met API proxy
+- **MapLibre GL** - Moderne interactieve kaarten met sync zoom
+- **Highcharts** - Professionele data visualisaties (radar, bar, scatter)
+- **React Markdown** - AI content rendering
+- **Custom AddressSearchBar** - Live autocomplete met buurt namen
+- **CSS Grid/Flexbox** - Moderne responsive layouts
 
 ### Backend
-- FastAPI - Moderne Python web framework
-- OpenAI API - AI taalmodel integratie
-- Scikit-learn - Machine learning (KMeans, KNN)
-- Pandas/GeoPandas - Data processing + CBS crime data integratie
-- Uvicorn - ASGI server voor productie
-- Python 3.11 - Docker deployment
+- **FastAPI** - Moderne Python web framework met async endpoints
+- **OpenAI GPT-4o-mini** - AI taalmodel voor buurtbeschrijvingen
+- **Scikit-learn** - Machine learning (KMeans, KNN, StandardScaler)
+- **Pandas/GeoPandas** - Data processing + CBS integratie
+- **PDOK WFS client** - Buurt-omlijning polygons ophalen
+- **Uvicorn** - ASGI server voor productie deployment
 
-### Data Bronnen & ML
+### Data Bronnen & ML Pipeline
 - **PDOK Locatieserver** - Adres geocoding + BAG pand geometrie
-- **CBS StatLine OData** - Uitgebreide demografische data (11 features)
-- **CBS Politie 47018NED** - Criminaliteitscijfers 2024 (geregistreerde misdrijven)
-- **KMeans Clustering** - 12 buurt-types gebaseerd op socio-demografische data
-- **LLM Labeling** - AI-g gegenereerde begrijpelijke cluster beschrijvingen
-- **KNN Recommender** - Vergelijkbare buurten gebaseerd op feature similarity
+- **PDOK WFS** - Buurt-omlijning polygons voor kaartvisualisatie
+- **CBS StatLine OData** - Uitgebreide demografische data (15+ features)
+- **CBS Politie 47018NED** - Criminaliteitscijfers 2024 per buurt
+- **CBS Wijken&Buurten metadata** - Buurt namen voor gebruiksvriendelijkheid
+- **KMeans Clustering** - 12 buurt-types gebaseerd op socio-demografische features
+- **LLM Labeling** - AI-gegenereerde begrijpelijke cluster beschrijvingen
+- **KNN Recommender** - Vergelijkbare buurten met echte buurt namen
+- **PCA Visualisatie** - 2D ML-ruimte voor cluster understanding
 
 ### Deployment
 - Docker - Containerized deployment
@@ -185,6 +202,26 @@ Response:
 }
 ```
 
+### GET /api/buurt-geometry
+Geeft buurt-omlijning polygon voor kaartvisualisatie.
+
+Parameters:
+- `buurt_code`: CBS buurtcode (bijv. BU05990110)
+
+Response:
+```json
+{
+  "type": "Feature",
+  "geometry": {
+    "type": "MultiPolygon",
+    "coordinates": [[[...]]]
+  },
+  "properties": {...}
+}
+```
+
+**Gebruikt PDOK WFS voor accurate buurtgrenzen op beide kaarten.**
+
 ### GET /api/buurt-crime
 Geeft criminaliteitsgegevens voor een buurt (2024 data).
 
@@ -195,10 +232,8 @@ Response:
 ```json
 {
   "buurt_code": "BU05990110",
-  "crime_data": {
-    "total_crimes": 42,
-    "crime_rate_per_1000": 15.7
-  }
+  "total_crimes": 42,
+  "crime_rate_per_1000": 15.7
 }
 ```
 
@@ -209,15 +244,20 @@ Health check endpoint.
 
 **🌐 URL:** [micro-neighbourhood-production-4237.up.railway.app](https://micro-neighbourhood-production-4237.up.railway.app)
 
-**📅 Laatste update:** December 2025
+**📅 Laatste update:** November 2025
 
-**✨ Laatste updates:**
+**✨ Laatste updates (November 2025):**
+- **🚀 Directe buurtvergelijking** - Tweede zoekbalk met radar chart vergelijking
+- **🗺️ Dubbele kaarten** - Sync zoom tussen hoofd- en vergelijkingskaart
+- **🏘️ Buurt-omlijning** - PDOK WFS polygons voor accurate buurtgrenzen
+- **🔍 Intelligente autocomplete** - Buurt namen in dropdown bij adres zoeken
+- **📊 Radar comparison chart** - 6-dimensionele visuele buurtvergelijking
+- **🏷️ Echte buurt namen** - KNN resultaten tonen buurt namen i.p.v. CBS codes
+- **📏 Meer statistieken** - Voorzieningen afstanden (supermarkt, huisarts, school, kinderdagverblijf)
+- **🎯 Verbeterde UX** - Enter toets & suggestie-klik werken beide voor direct zoeken
+- **🔄 Verticale layout** - Hoofd kaart bovenaan, vergelijkingssectie eronder
 - AI verhalen verrijkt met cluster context en vergelijkbare buurten
-- **Criminaliteitsdata 2024 geïntegreerd** - CBS Politie misdaadcijfers per buurt
-- PCA visualisatie verplaatst onder de kaart voor betere layout
-- Cluster labels met hoofdletters voor professionele uitstraling
-- Vite proxy configuratie voor naadloze lokale development
-- Uitgebreide API responses met ML metadata, PCA coordinaten en crime data
+- Criminaliteitsdata 2024 geïntegreerd - CBS Politie misdaadcijfers per buurt
 
 ### Docker Deployment op Railway
 
@@ -227,10 +267,20 @@ De applicatie gebruikt Docker voor consistente deployment:
    ```
    ├── Dockerfile          # Multi-stage build (Node + Python)
    ├── frontend/           # React app + MapLibre + Highcharts
+   │   ├── src/
+   │   │   ├── components/AddressSearchBar.jsx  # Autocomplete component
+   │   │   └── App.jsx       # Main app met buurtvergelijking
+   │   └── package.json
    ├── backend/            # FastAPI backend + ML
+   │   ├── main.py         # API endpoints (neighbourhood-story, similar-buurten, etc.)
    │   ├── offline/        # ML preprocessing scripts
-   │   └── data/           # Precomputed ML data (CSV)
-   └── railway.toml        # Railway config
+   │   │   ├── build_clusters.py        # KMeans + LLM labeling
+   │   │   ├── fetch_crime_and_merge.py # CBS criminaliteit data
+   │   │   ├── fetch_buurt_namen.py     # CBS buurt namen
+   │   │   └── merge_buurt_namen.py     # Data merging
+   │   └── data/           # Precomputed ML data (CSV files)
+   ├── README.md           # Deze documentatie
+   └── requirements.txt    # Python dependencies
    ```
 
 2. **Docker Build Process**
@@ -254,30 +304,37 @@ De applicatie gebruikt Docker voor consistente deployment:
 
 2. **ML Data Preprocessing** (Optioneel - gebruikt precomputed data)
    ```bash
-   cd backend
-   # Zorg voor OPENAI_API_KEY in .env
-   python -m offline.build_clusters  # Genereert ML modellen + labels
+   cd backend/offline
+   # Zorg voor OPENAI_API_KEY in environment
+   python fetch_buurt_namen.py      # Haal buurt namen op van CBS
+   python fetch_crime_and_merge.py  # Haal criminaliteitsdata 2024 op
+   python merge_buurt_namen.py      # Voeg buurt namen toe aan dataset
+   python build_clusters.py         # Genereert ML modellen + labels
    ```
 
-3. **Backend**
+3. **Backend Setup**
    ```bash
    cd backend
    python3 -m pip install -r requirements.txt
+   # OPENAI_API_KEY toevoegen aan environment
    ```
 
-4. **Frontend**
+4. **Frontend Setup**
    ```bash
    cd frontend
    npm install
-   npm run build
+   npm run build  # Of npm run dev voor development
    ```
 
-5. **Start**
+5. **Start Development Server**
    ```bash
    cd backend
-   python3 -m uvicorn main:app --host 0.0.0.0 --port 8000
+   python3 -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
    ```
 
 6. **Open:** http://localhost:8000
 
-**Development Setup:** Vite proxy routes `/api/*` requests to backend automatically.
+**Development Notes:**
+- Vite proxy routes `/api/*` requests automatisch naar backend
+- Frontend hot-reload werkt parallel met backend reload
+- Precomputed data staat in `backend/data/` voor snelle startup
