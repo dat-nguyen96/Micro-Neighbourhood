@@ -2270,7 +2270,7 @@ export default function App() {
                               </span>
                               <div className="similar-main">
                                 <div className="similar-title">
-                                  {b.buurt_code} – {b.gemeente}
+                                  {b.naam || b.buurt_code} – {b.gemeente}
                                 </div>
                                 <div className="small">
                                   {capitalizeFirst(b.cluster_label_short)} •{" "}
