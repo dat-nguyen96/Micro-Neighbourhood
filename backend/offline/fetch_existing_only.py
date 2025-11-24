@@ -478,15 +478,21 @@ def fetch_all_data():
 def build_clusters():
     """
     Gebruik de opgehaalde data om KMeans clusters te bouwen.
-    We gebruiken:
-    - Demografische / stedelijkheid features
-    - Alleen TOTAAL GEWELD als crime feature: crime_violence_total
+
+    Belangrijk:
+    - We gebruiken demografische / stedelijkheid features
+    - Indien aanwezig gebruiken we ook crime_violence_total als extra feature
+    - De clusters krijgen PAS ACHTERAF betekenis: hier slaan we alleen
+      cluster_id + neutrale labels op (Cluster 0, Cluster 1, ...).
     """
     print("=== Start cluster bouw ===")
 
     df = pd.read_csv(RAW_DATA_CSV)
     print(f"Data geladen: {len(df)} rijen")
 
+    # -------------------------------
+    # 1. Features selecteren
+    # -------------------------------
     # Basis features (CBS 85984NED)
     feature_cols = [
         "AantalInwoners_5",
@@ -502,16 +508,16 @@ def build_clusters():
         "k_65JaarOfOuder_12",
     ]
 
-    # ENKEL geweld als crime feature
-    crime_feature = None
+    # Optioneel: alleen TOTAAL GEWELD als crime feature
     if "crime_violence_total" in df.columns and df["crime_violence_total"].notna().any():
         feature_cols.append("crime_violence_total")
-        crime_feature = "crime_violence_total"
         print("Violence feature toegevoegd aan clustering: crime_violence_total")
     else:
         print("⚠️ Geen crime_violence_total gevonden, clustering zonder crime features")
 
-    # Filter alleen rijen waar alle features aanwezig zijn
+    # -------------------------------
+    # 2. Data schoonmaken
+    # -------------------------------
     df_features = df[feature_cols].copy()
     mask = df_features.notna().all(axis=1)
     df_clean = df[mask].reset_index(drop=True)
@@ -520,38 +526,122 @@ def build_clusters():
     print(f"Na cleaning: {len(df_clean)} rijen over")
     print(f"Features gebruikt voor clustering: {feature_cols}")
 
-    # Standardiseren
+    # -------------------------------
+    # 3. Schalen + KMeans
+    # -------------------------------
     scaler = StandardScaler()
     X = scaler.fit_transform(df_features)
 
-    # KMeans
     n_clusters = 8
     kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=20)
     clusters = kmeans.fit_predict(X)
 
-    # PCA voor 2D visualisatie
+    # -------------------------------
+    # 4. PCA voor visualisatie
+    # -------------------------------
     pca = PCA(n_components=2, random_state=42)
     X_pca = pca.fit_transform(X)
 
-    # Labels (kort + lang) koppelen
+    # -------------------------------
+    # 5. Clusterprofielen (voor interpretatie achteraf)
+    # -------------------------------
+    profile_df = df_clean.copy()
+    profile_df["cluster_id"] = clusters
+
+    # Maak een overzicht met gemiddelde waarden per cluster
+    cluster_profile = profile_df.groupby("cluster_id")[feature_cols].mean()
+
+    print("\n=== Clusterprofielen (gemiddelde waarden per cluster) ===")
+    print(cluster_profile.to_string())
+    print("=== Einde clusterprofielen ===\n")
+
+    # --------------------------------------------------
+    # Cluster-profielen berekenen (voor labeling)
+    # --------------------------------------------------
+    df_prof = df_clean.copy()
+    df_prof["cluster_id"] = clusters
+
+    # geweld per 1000 inwoners
+    inwoners = df_prof["AantalInwoners_5"].replace({0: pd.NA})
+    df_prof["violence_per_1000"] = df_prof["crime_violence_total"] / inwoners * 1000
+
+    df_prof["youth_share"] = df_prof["k_15Tot25Jaar_9"] + df_prof["k_25Tot45Jaar_10"]
+    df_prof["elderly_share"] = df_prof["k_65JaarOfOuder_12"]
+
+    cluster_profiles = (
+        df_prof.groupby("cluster_id")[
+            [
+                "Bevolkingsdichtheid_34",
+                "violence_per_1000",
+                "youth_share",
+                "elderly_share",
+            ]
+        ]
+        .mean()
+        .copy()
+    )
+
+    # Z-scores over clusters
+    scaler_prof = StandardScaler()
+    prof_z = scaler_prof.fit_transform(cluster_profiles)
+    prof_z = pd.DataFrame(
+        prof_z,
+        index=cluster_profiles.index,
+        columns=[c + "_z" for c in cluster_profiles.columns],
+    )
+
+    # Labels toekennen op basis van profielen
+    def _assign_cluster_name(row):
+        density_z = row["Bevolkingsdichtheid_34_z"]
+        violence_z = row["violence_per_1000_z"]
+        youth_z = row["youth_share_z"]
+        elderly_z = row["elderly_share_z"]
+
+        # 1. Druk & onveilig: hoge dichtheid + veel geweld
+        if density_z > 0.8 and violence_z > 0.6:
+            return "Stedelijk & Risico"
+        # 2. Druk & jong, maar niet extreem onveilig
+        if density_z > 0.6 and youth_z > 0.4 and violence_z > -0.2:
+            return "Jong & Levendig"
+        # 3. Druk & relatief veilig
+        if density_z > 0.6 and violence_z < -0.2:
+            return "Modern & Veilig"
+        # 4. Landelijk, rustig en veilig
+        if density_z < -0.8 and violence_z < -0.2:
+            return "Landelijk & Rustig"
+        # 5. Vergrijzend, niet heel stedelijk
+        if elderly_z > 0.5 and density_z < 0.3:
+            return "Vergrijzend & Groen"
+        # 6. Geweld relatief hoog, maar niet extreme dichtheid
+        if violence_z > 0.5 and -0.5 <= density_z <= 0.8:
+            return "Sociaal & Uitdagend"
+        # 7. Rustig, lage geweldscriminaliteit, eerder comfortabel/afgeschermd
+        if violence_z < -0.5 and density_z > -0.5:
+            return "Luxueus & Afgezonderd"
+        # 8. Restcategorie
+        return "Traditioneel & Gemengd"
+
     cluster_labels = {}
     cluster_labels_long = {}
 
-    for i in range(n_clusters):
-        short_name = CLUSTER_SHORT_NAMES.get(i, f"Cluster {i}")
+    for cid in range(n_clusters):
+        row_z = prof_z.loc[cid]
+        short_name = _assign_cluster_name(row_z)
         long_desc = CLUSTER_LONG_DESCRIPTIONS.get(
-            i,
+            list(CLUSTER_SHORT_NAMES.keys())[list(CLUSTER_SHORT_NAMES.values()).index(short_name)] if short_name in CLUSTER_SHORT_NAMES.values() else 0,
             "Een woonomgeving met specifieke karakteristieken die aansluit bij verschillende leefstijlen en behoeften.",
         )
-        cluster_labels[i] = short_name
-        cluster_labels_long[i] = long_desc
+        cluster_labels[cid] = short_name
+        cluster_labels_long[cid] = long_desc
 
-    print("Cluster labels toegewezen:")
+    print("Cluster labels (op basis van profielen):")
     for i in range(n_clusters):
         cluster_count = (clusters == i).sum()
         print(f"  Cluster {i}: {cluster_labels[i]} ({cluster_count} buurten)")
 
-    # Resultaat dataframe
+    # -------------------------------
+    # 7. Resultaat naar CSV
+    # -------------------------------
     result_df = df_clean.copy()
     result_df["cluster_id"] = clusters
     result_df["cluster_label"] = result_df["cluster_id"].map(cluster_labels)
@@ -559,13 +649,11 @@ def build_clusters():
     result_df["pca_x"] = X_pca[:, 0]
     result_df["pca_y"] = X_pca[:, 1]
 
-    # Schrijf clusters naar CSV (inclusief cluster_label_long!)
     result_df.to_csv(CLUSTERS_CSV, index=False)
     print(
         f"=== Clusters geschreven naar {CLUSTERS_CSV} "
         f"({len(result_df)} rijen, {n_clusters} clusters) ==="
     )
-
 
 # ======================================================================
 # CLI
