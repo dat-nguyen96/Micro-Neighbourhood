@@ -679,8 +679,7 @@ async def similar_buurten(
                 cluster_label_short=str(row.get("cluster_label_short", f"Cluster {int(row['cluster_id'])}")),
                 population=float(feat_row["AantalInwoners_5"])
                 if pd.notna(feat_row["AantalInwoners_5"]) else None,
-                income_per_person=float(feat_row["GemiddeldInkomenPerInwoner_66"])
-                if pd.notna(feat_row["GemiddeldInkomenPerInwoner_66"]) else None,
+                income_per_person=None,  # Not available in 85984NED dataset
                 pca_x=float(row["pca_x"]) if "pca_x" in row and pd.notna(row["pca_x"]) else None,
                 pca_y=float(row["pca_y"]) if "pca_y" in row and pd.notna(row["pca_y"]) else None,
             )
