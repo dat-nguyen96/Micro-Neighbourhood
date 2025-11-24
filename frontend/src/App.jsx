@@ -2076,64 +2076,66 @@ export default function App() {
                       </p>
                     )}
                   </div>
-
+                </div>
+                {/* Right: comparison section */}
+                <div className="analysis-right">
                   {/* Buurtcijfers */}
                   <div className="panel-block">
-            <h2>Buurt in één oogopslag</h2>
-            {result.cbsStats ? (
-              <div className="stat-grid">
-                {result.cbsStats.population != null && (
-                  <div className="stat-card">
-                    <div className="stat-label">Inwoners (totaal)</div>
-                    <div className="stat-value">
-                      {formatOrNA(result.cbsStats.population, nf0)}
-                    </div>
-                    <div className="stat-help">
+                    <h2>Buurt in één oogopslag</h2>
+                    {result.cbsStats ? (
+                      <div className="stat-grid">
+                        {result.cbsStats.population != null && (
+                          <div className="stat-card">
+                            <div className="stat-label">Inwoners (totaal)</div>
+                            <div className="stat-value">
+                              {formatOrNA(result.cbsStats.population, nf0)}
+                            </div>
+                            <div className="stat-help">
                               Hoeveel mensen er in de buurt wonen (CBS-data).
-                    </div>
-                  </div>
-                )}
+                            </div>
+                          </div>
+                        )}
 
-                {result.cbsStats.density != null && (
-                  <div className="stat-card">
-                    <div className="stat-label">Bevolkingsdichtheid</div>
-                    <div className="stat-value">
-                      {formatOrNA(result.cbsStats.density, nf0)}
-                      <span className="small"> / km²</span>
-                    </div>
-                    <div className="stat-help">
+                        {result.cbsStats.density != null && (
+                          <div className="stat-card">
+                            <div className="stat-label">Bevolkingsdichtheid</div>
+                            <div className="stat-value">
+                              {formatOrNA(result.cbsStats.density, nf0)}
+                              <span className="small"> / km²</span>
+                            </div>
+                            <div className="stat-help">
                               Hogere dichtheid betekent meestal een drukkere wijk met
                               meer voorzieningen.
-                    </div>
-                  </div>
-                )}
+                            </div>
+                          </div>
+                        )}
 
-                {result.cbsStats.pct65Plus != null && (
-                  <div className="stat-card">
-                    <div className="stat-label">% 65-plus</div>
-                    <div className="stat-value">
-                      {formatOrNA(result.cbsStats.pct65Plus, nf1)}
-                      <span className="small"> %</span>
-                    </div>
-                    <div className="stat-help">
-                      Percentage bewoners van 65 jaar en ouder.
-                    </div>
-                  </div>
-                )}
+                        {result.cbsStats.pct65Plus != null && (
+                          <div className="stat-card">
+                            <div className="stat-label">% 65-plus</div>
+                            <div className="stat-value">
+                              {formatOrNA(result.cbsStats.pct65Plus, nf1)}
+                              <span className="small"> %</span>
+                            </div>
+                            <div className="stat-help">
+                              Percentage bewoners van 65 jaar en ouder.
+                            </div>
+                          </div>
+                        )}
 
-                {result.cbsStats.incomePerPerson != null && (
-                  <div className="stat-card">
-                    <div className="stat-label">
-                      Gem. inkomen per persoon
-                    </div>
-                    <div className="stat-value">
+                        {result.cbsStats.incomePerPerson != null && (
+                          <div className="stat-card">
+                            <div className="stat-label">
+                              Gem. inkomen per persoon
+                            </div>
+                            <div className="stat-value">
                               € {formatOrNA(result.cbsStats.incomePerPerson, nf0)}
-                    </div>
-                    <div className="stat-help">
-                      Gemiddeld besteedbaar inkomen per persoon (CBS).
-                    </div>
-                  </div>
-                )}
+                            </div>
+                            <div className="stat-help">
+                              Gemiddeld besteedbaar inkomen per persoon (CBS).
+                            </div>
+                          </div>
+                        )}
 
                         {storyAreaHa != null && (
                           <div className="stat-card">
@@ -2276,14 +2278,12 @@ export default function App() {
                             </div>
                           </div>
                         )}
-              </div>
-            ) : (
+                      </div>
+                    ) : (
                       <p className="small">Geen CBS-buurtcijfers gevonden.</p>
                     )}
                   </div>
-                </div>
-                {/* Right: comparison section */}
-                <div className="analysis-right">
+
                   <h2>Vergelijk met andere buurt</h2>
 
                   <AddressSearchBar
