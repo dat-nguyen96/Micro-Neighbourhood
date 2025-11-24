@@ -265,11 +265,10 @@ export default function App() {
         }
 
         const namenMap = new Map();
-        for (let i = 1; i < Math.min(lines.length, 10); i++) {  // Test eerst met eerste 10 regels
+        for (let i = 1; i < lines.length; i++) {  // Laad alle regels
           const cols = lines[i].split(",");
           const buurtCode = cols[identifierIdx]?.replace(/"/g, "")?.trim();
           const buurtNaam = cols[titleIdx]?.replace(/"/g, "")?.trim();
-          console.log(`Line ${i}: buurtCode="${buurtCode}", buurtNaam="${buurtNaam}"`);
           if (buurtCode && buurtNaam) {
             namenMap.set(buurtCode, buurtNaam);
           }
@@ -2007,6 +2006,25 @@ export default function App() {
                   </div>
                 )}
 
+                {(result.cbsStats.pctMannen != null || result.cbsStats.pctVrouwen != null) && (
+                  <div className="stat-card">
+                    <div className="stat-label">Geslachtsverdeling</div>
+                    <div className="stat-value">
+                      <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
+                        {result.cbsStats.pctMannen != null && (
+                          <span>Mannen: {formatOrNA(result.cbsStats.pctMannen, nf1)}%</span>
+                        )}
+                        {result.cbsStats.pctVrouwen != null && (
+                          <span>Vrouwen: {formatOrNA(result.cbsStats.pctVrouwen, nf1)}%</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="stat-help">
+                              Geslachtsverdeling in de bevolking (CBS-data).
+                    </div>
+                  </div>
+                )}
+
                 {result.cbsStats.density != null && (
                   <div className="stat-card">
                     <div className="stat-label">Bevolkingsdichtheid</div>
@@ -2106,7 +2124,7 @@ export default function App() {
                               {formatOrNA(result.cbsStats.seksueelGeweld, nf1)}
                             </div>
                             <div className="stat-help">
-                              Seksueel geweld per 1.000 inwoners (CBS 2023). Klik voor details.
+                              Seksueel geweld per 1.000 inwoners (CBS 2024). Klik voor details.
                             </div>
                           </div>
                         )}
@@ -2121,7 +2139,7 @@ export default function App() {
                               {formatOrNA(result.cbsStats.geweldsMisdrijven, nf1)}
                             </div>
                             <div className="stat-help">
-                              Geweldsmisdrijven per 1.000 inwoners (CBS 2023). Klik voor details.
+                              Geweldsmisdrijven per 1.000 inwoners (CBS 2024). Klik voor details.
                             </div>
                           </div>
                         )}
@@ -2136,7 +2154,7 @@ export default function App() {
                               {formatOrNA(result.cbsStats.vermogensMisdrijven, nf1)}
                             </div>
                             <div className="stat-help">
-                              Vermogensmisdrijven per 1.000 inwoners (CBS 2023). Klik voor details.
+                              Vermogensmisdrijven per 1.000 inwoners (CBS 2024). Klik voor details.
                             </div>
                           </div>
                         )}
@@ -2151,7 +2169,7 @@ export default function App() {
                               {formatOrNA(result.cbsStats.vernielingsMisdrijven, nf1)}
                             </div>
                             <div className="stat-help">
-                              Vernieling en openbare orde per 1.000 inwoners (CBS 2023). Klik voor details.
+                              Vernieling en openbare orde per 1.000 inwoners (CBS 2024). Klik voor details.
                             </div>
                           </div>
                         )}
@@ -2404,6 +2422,29 @@ export default function App() {
                               {result.cbsStats?.population && compareResult.cbsStats?.population
                                 ? `${result.cbsStats.population > compareResult.cbsStats.population ? '+' : ''}${(result.cbsStats.population - compareResult.cbsStats.population).toLocaleString('nl-NL')}`
                                 : 'n.v.t.'}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Geslachtsverdeling vergelijking */}
+                        {((result.cbsStats?.pctMannen != null || result.cbsStats?.pctVrouwen != null) ||
+                          (compareResult.cbsStats?.pctMannen != null || compareResult.cbsStats?.pctVrouwen != null)) && (
+                          <div className="comparison-row">
+                            <div className="comparison-label">Geslacht</div>
+                            <div className="comparison-value main-value">
+                              <div style={{ fontSize: '0.8em', lineHeight: '1.2' }}>
+                                {result.cbsStats?.pctMannen != null && <div>M: {formatOrNA(result.cbsStats.pctMannen, nf1)}%</div>}
+                                {result.cbsStats?.pctVrouwen != null && <div>V: {formatOrNA(result.cbsStats.pctVrouwen, nf1)}%</div>}
+                              </div>
+                            </div>
+                            <div className="comparison-value compare-value">
+                              <div style={{ fontSize: '0.8em', lineHeight: '1.2' }}>
+                                {compareResult.cbsStats?.pctMannen != null && <div>M: {formatOrNA(compareResult.cbsStats.pctMannen, nf1)}%</div>}
+                                {compareResult.cbsStats?.pctVrouwen != null && <div>V: {formatOrNA(compareResult.cbsStats.pctVrouwen, nf1)}%</div>}
+                              </div>
+                            </div>
+                            <div className="comparison-diff">
+                              n.v.t.
                             </div>
                           </div>
                         )}

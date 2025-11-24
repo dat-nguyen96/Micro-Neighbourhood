@@ -253,6 +253,8 @@ async def buurt_stats(buurt_code: str = Query(..., description="CBS buurtcode, b
 
         # Demografie
         "population": int(row.get("AantalInwoners_5", 0)) if pd.notna(row.get("AantalInwoners_5")) else None,
+        "mannen": int(row.get("Mannen_6", 0)) if pd.notna(row.get("Mannen_6")) else None,
+        "vrouwen": int(row.get("Vrouwen_7", 0)) if pd.notna(row.get("Vrouwen_7")) else None,
         "density": float(row.get("Bevolkingsdichtheid_34", 0)) if pd.notna(row.get("Bevolkingsdichtheid_34")) else None,
         "pct65Plus": None,  # Wordt berekend uit leeftijdsgroepen
 
@@ -310,14 +312,20 @@ async def buurt_stats(buurt_code: str = Query(..., description="CBS buurtcode, b
             age_65_plus = stats["ageGroups"]["65+"]
             stats["pct65Plus"] = round((age_65_plus / stats["population"]) * 100, 1)
 
-        # Voeg cluster informatie toe
-        cluster_id = int(row.get("cluster_id", 0))
-        cluster_info = _get_cluster_info(cluster_id)
-        stats.update({
-            "cluster": cluster_id,
-            "clusterLabel": cluster_info["label_short"],
-            "clusterDescription": cluster_info["label_long"]
-        })
+            # Bereken percentages mannen/vrouwen
+            if stats["mannen"] is not None and stats["population"] and stats["population"] > 0:
+                stats["pctMannen"] = round((stats["mannen"] / stats["population"]) * 100, 1)
+            if stats["vrouwen"] is not None and stats["population"] and stats["population"] > 0:
+                stats["pctVrouwen"] = round((stats["vrouwen"] / stats["population"]) * 100, 1)
+
+            # Voeg cluster informatie toe
+            cluster_id = int(row.get("cluster_id", 0))
+            cluster_info = _get_cluster_info(cluster_id)
+            stats.update({
+                "cluster": cluster_id,
+                "clusterLabel": cluster_info["label_short"],
+                "clusterDescription": cluster_info["label_long"]
+            })
 
         return stats
 
