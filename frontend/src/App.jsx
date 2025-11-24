@@ -1419,6 +1419,151 @@ export default function App() {
     };
   }, [similarBuurten, result?.address, clusterInfo]);
 
+  // Radar chart: buurtvergelijking
+  const comparisonRadarOptions = useMemo(() => {
+    if (!result?.cbsStats || !compareResult?.cbsStats) {
+      return null;
+    }
+
+    // Normaliseer waarden naar 0-100 schaal voor radar chart
+    const normalize = (value, min, max) => {
+      if (value === null || value === undefined) return 0;
+      return Math.max(0, Math.min(100, ((value - min) / (max - min)) * 100));
+    };
+
+    // Categorieën en hun ranges voor normalisatie
+    const categories = [
+      "Bevolkingsdichtheid",
+      "Inkomen p.p.",
+      "65+ percentage",
+      "Mate stedelijkheid",
+      "Criminaliteit geweld",
+      "Criminaliteit vermogens"
+    ];
+
+    const mainData = [
+      normalize(result.cbsStats.density, 0, 20000), // dichtheid 0-20k/km²
+      normalize(result.cbsStats.incomePerPerson, 20, 60), // inkomen 20k-60k ×1000€
+      normalize(result.cbsStats.pct65Plus, 0, 40), // 65+ 0-40%
+      normalize(result.cbsStats.stedelijkheid, 1, 5) * 20, // stedelijkheid 1-5 → 20-100
+      normalize(result.cbsStats.geweldsMisdrijven, 0, 10), // geweld 0-10 per 1000
+      normalize(result.cbsStats.vermogensMisdrijven, 0, 20), // vermogens 0-20 per 1000
+    ];
+
+    const compareData = [
+      normalize(compareResult.cbsStats.density, 0, 20000),
+      normalize(compareResult.cbsStats.incomePerPerson, 20, 60),
+      normalize(compareResult.cbsStats.pct65Plus, 0, 40),
+      normalize(compareResult.cbsStats.stedelijkheid, 1, 5) * 20,
+      normalize(compareResult.cbsStats.geweldsMisdrijven, 0, 10),
+      normalize(compareResult.cbsStats.vermogensMisdrijven, 0, 20),
+    ];
+
+    return {
+      chart: {
+        polar: true,
+        type: "area",
+        backgroundColor: "transparent",
+        height: 280,
+      },
+      title: {
+        text: "Buurtvergelijking",
+        style: { color: "#e5e7eb", fontSize: "14px", fontWeight: "600" },
+      },
+      pane: {
+        size: "80%",
+      },
+      xAxis: {
+        categories: categories,
+        tickmarkPlacement: "on",
+        lineWidth: 0,
+        labels: {
+          style: { color: "#9ca3af", fontSize: "11px" },
+        },
+        gridLineColor: "rgba(55,65,81,0.5)",
+      },
+      yAxis: {
+        gridLineInterpolation: "polygon",
+        lineWidth: 0,
+        min: 0,
+        max: 100,
+        labels: {
+          enabled: false,
+        },
+        gridLineColor: "rgba(55,65,81,0.3)",
+      },
+      tooltip: {
+        shared: true,
+        backgroundColor: "#020617",
+        borderColor: "#4b5563",
+        style: { color: "#e5e7eb", fontSize: "11px" },
+        formatter: function() {
+          const category = this.x;
+          const mainValue = this.points[0].y;
+          const compareValue = this.points[1].y;
+
+          let mainLabel = "n.v.t.";
+          let compareLabel = "n.v.t.";
+
+          // Denormaliseer voor tooltip
+          if (category === "Bevolkingsdichtheid") {
+            mainLabel = result.cbsStats.density ? `${result.cbsStats.density} /km²` : "n.v.t.";
+            compareLabel = compareResult.cbsStats.density ? `${compareResult.cbsStats.density} /km²` : "n.v.t.";
+          } else if (category === "Inkomen p.p.") {
+            mainLabel = result.cbsStats.incomePerPerson ? `€${result.cbsStats.incomePerPerson * 1000}` : "n.v.t.";
+            compareLabel = compareResult.cbsStats.incomePerPerson ? `€${compareResult.cbsStats.incomePerPerson * 1000}` : "n.v.t.";
+          } else if (category === "65+ percentage") {
+            mainLabel = result.cbsStats.pct65Plus ? `${result.cbsStats.pct65Plus.toFixed(1)}%` : "n.v.t.";
+            compareLabel = compareResult.cbsStats.pct65Plus ? `${compareResult.cbsStats.pct65Plus.toFixed(1)}%` : "n.v.t.";
+          } else if (category === "Mate stedelijkheid") {
+            mainLabel = result.cbsStats.stedelijkheid ? `${result.cbsStats.stedelijkheid}/5` : "n.v.t.";
+            compareLabel = compareResult.cbsStats.stedelijkheid ? `${compareResult.cbsStats.stedelijkheid}/5` : "n.v.t.";
+          } else if (category === "Criminaliteit geweld") {
+            mainLabel = result.cbsStats.geweldsMisdrijven ? `${result.cbsStats.geweldsMisdrijven.toFixed(1)} per 1000` : "n.v.t.";
+            compareLabel = compareResult.cbsStats.geweldsMisdrijven ? `${compareResult.cbsStats.geweldsMisdrijven.toFixed(1)} per 1000` : "n.v.t.";
+          } else if (category === "Criminaliteit vermogens") {
+            mainLabel = result.cbsStats.vermogensMisdrijven ? `${result.cbsStats.vermogensMisdrijven.toFixed(1)} per 1000` : "n.v.t.";
+            compareLabel = compareResult.cbsStats.vermogensMisdrijven ? `${compareResult.cbsStats.vermogensMisdrijven.toFixed(1)} per 1000` : "n.v.t.";
+          }
+
+          return `<b>${category}</b><br/>
+                  <span style="color: #22c55e">■ ${result.address.split(',')[0]}:</span> ${mainLabel}<br/>
+                  <span style="color: #3b82f6">■ ${compareResult.address.split(',')[0]}:</span> ${compareLabel}`;
+        },
+      },
+      plotOptions: {
+        area: {
+          fillOpacity: 0.1,
+          lineWidth: 2,
+          marker: {
+            enabled: false,
+          },
+        },
+      },
+      series: [
+        {
+          name: result.address.split(',')[0], // Eerste deel van adres
+          data: mainData,
+          color: "#22c55e",
+          fillColor: "rgba(34, 197, 94, 0.1)",
+        },
+        {
+          name: compareResult.address.split(',')[0], // Eerste deel van adres
+          data: compareData,
+          color: "#3b82f6",
+          fillColor: "rgba(59, 130, 246, 0.1)",
+        },
+      ],
+      legend: {
+        itemStyle: { color: "#9ca3af", fontSize: "11px" },
+        itemHoverStyle: { color: "#e5e7eb" },
+      },
+      credits: {
+        enabled: false,
+      },
+    };
+  }, [result, compareResult]);
+
   // MapLibre: render when coords/geometry change
   useEffect(() => {
     if (!mapContainerRef.current || !result?.coords) {
@@ -2151,6 +2296,17 @@ export default function App() {
                 {compareResult && result && (
                   <div className="panel-block" style={{ marginTop: "1rem" }}>
                     <h2>Vergelijking</h2>
+
+                    {/* Radar chart voor visuele vergelijking */}
+                    {comparisonRadarOptions && (
+                      <div className="chart-card" style={{ marginBottom: "1.5rem" }}>
+                        <HighchartsReact
+                          highcharts={Highcharts}
+                          options={comparisonRadarOptions}
+                        />
+                      </div>
+                    )}
+
                     <div className="comparison-grid">
                       {/* Bevolking vergelijking */}
                       {(result.cbsStats?.population != null || compareResult.cbsStats?.population != null) && (
