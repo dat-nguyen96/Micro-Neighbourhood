@@ -812,6 +812,63 @@ async def on_startup():
 
 # ---------- Static React build ----------
 
+@app.get("/api/buurt-stats", response_model=Dict)
+async def buurt_stats(buurt_code: str = Query(..., description="CBS buurtcode, bv. BU05990110")):
+    """
+    Geef gedetailleerde buurt statistieken terug uit onze voorbewerkte CBS data.
+    Inclusief demografie en criminaliteit (3 categorieën).
+    """
+    _ensure_cbs_data_loaded()
+    assert CBS_DF is not None
+
+    # Zoek de buurt in onze data
+    mask = CBS_DF["WijkenEnBuurten"] == buurt_code
+    if not mask.any():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Buurtcode {buurt_code} niet gevonden in onze data."
+        )
+
+    row = CBS_DF[mask].iloc[0]
+
+    # Bouw statistieken object
+    stats = {
+        "buurtCode": buurt_code,
+        "gemeenteNaam": str(row.get("Gemeentenaam_1", "")).strip(),
+
+        # Demografie
+        "population": int(row.get("AantalInwoners_5", 0)) if pd.notna(row.get("AantalInwoners_5")) else None,
+        "density": float(row.get("Bevolkingsdichtheid_34", 0)) if pd.notna(row.get("Bevolkingsdichtheid_34")) else None,
+        "pct65Plus": None,  # Wordt berekend uit leeftijdsgroepen
+
+        # Leeftijdsgroepen
+        "ageGroups": {
+            "0–15": int(row.get("k_0Tot15Jaar_8", 0)) if pd.notna(row.get("k_0Tot15Jaar_8")) else 0,
+            "15–25": int(row.get("k_15Tot25Jaar_9", 0)) if pd.notna(row.get("k_15Tot25Jaar_9")) else 0,
+            "25–45": int(row.get("k_25Tot45Jaar_10", 0)) if pd.notna(row.get("k_25Tot45Jaar_10")) else 0,
+            "45–65": int(row.get("k_45Tot65Jaar_11", 0)) if pd.notna(row.get("k_45Tot65Jaar_11")) else 0,
+            "65+": int(row.get("k_65JaarOfOuder_12", 0)) if pd.notna(row.get("k_65JaarOfOuder_12")) else 0,
+        },
+
+        # Inkomen - niet beschikbaar in 85984NED
+        "incomePerPerson": None,
+
+        # Criminaliteit (uit onze voorbewerkte data)
+        "vermogensMisdrijven": float(row.get("crime_property", 0)) if pd.notna(row.get("crime_property")) else None,
+        "geweldsMisdrijven": float(row.get("crime_violence", 0)) if pd.notna(row.get("crime_violence")) else None,
+        "vernielingsMisdrijven": float(row.get("crime_vandalism", 0)) if pd.notna(row.get("crime_vandalism")) else None,
+
+        # Bereken percentage 65+ uit leeftijdsgroepen
+        "pct65Plus": None,
+    }
+
+    # Bereken percentage 65+
+    if stats["population"] and stats["population"] > 0:
+        over65 = stats["ageGroups"]["65+"]
+        stats["pct65Plus"] = round((over65 / stats["population"]) * 100, 1)
+
+    return stats
+
 if FRONTEND_DIST.exists():
     print("[BOOT] Mounting static frontend at /")
     app.mount(

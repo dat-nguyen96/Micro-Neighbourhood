@@ -15,7 +15,7 @@ const BAG_PAND_URL =
   "https://api.pdok.nl/lv/bag/ogc/v1-demo/collections/pand/items";
 
 // CBS Kerncijfers wijken en buurten 2017 (83765NED)
-const CBS_BASE_URL = "https://opendata.cbs.nl/ODataApi/OData/83765NED";
+const CBS_BASE_URL = "https://opendata.cbs.nl/ODataApi/OData/85984NED";
 const CBS_TYPED_URL = `${CBS_BASE_URL}/TypedDataSet`;
 
 const MAP_STYLE_URL = {
@@ -232,7 +232,7 @@ export default function App() {
 
   // Load buurt namen on startup
   useEffect(() => {
-    fetch("/data/cbs_buurt_namen_83765.csv")
+    fetch("/data/cbs_buurt_namen_85984.csv")
       .then((resp) => resp.text())
       .then((csvText) => {
         const lines = csvText.trim().split("\n");
@@ -427,170 +427,11 @@ export default function App() {
 
     let cbsStats = null;
     if (buurtCode) {
-      const filter = encodeURIComponent(`WijkenEnBuurten eq '${buurtCode}'`);
-      const cbsUrl = `${CBS_TYPED_URL}?$filter=${filter}&$top=1`;
-      const cbsResp = await fetch(cbsUrl);
-      if (cbsResp.ok) {
-        const cbsData = await cbsResp.json();
-        const rows = cbsData.value || [];
-        if (rows.length > 0) {
-          const row = rows[0];
-
-          // Helper: accepteert string of array van keys
-          const pick = (obj, keys) => {
-            const arr = Array.isArray(keys) ? keys : [keys];
-            for (const k of arr) {
-              if (
-                Object.prototype.hasOwnProperty.call(obj, k) &&
-                obj[k] !== null &&
-                obj[k] !== undefined
-              ) {
-                return obj[k];
-              }
-            }
-            return null;
-          };
-
-          const population = pick(row, "AantalInwoners_5");
-          const density = pick(row, "Bevolkingsdichtheid_33");
-          const gemeenteNaam = pick(row, "Gemeentenaam_1");
-
-          // Leeftijdsgroepen (absolute aantallen)
-          const ageGroups = {
-            "0–15": pick(row, "k_0Tot15Jaar_8"),
-            "15–25": pick(row, "k_15Tot25Jaar_9"),
-            "25–45": pick(row, "k_25Tot45Jaar_10"),
-            "45–65": pick(row, "k_45Tot65Jaar_11"),
-            "65+": pick(row, "k_65JaarOfOuder_12"),
-          };
-
-          const totalPopulation = population || 0;
-          const over65 = ageGroups["65+"] || 0;
-          const pct65Plus =
-            totalPopulation && over65
-              ? Math.round((over65 / totalPopulation) * 100 * 10) / 10
-              : null;
-
-          // Inkomen
-          const incomePerPerson = pick(row, "GemiddeldInkomenPerInwoner_66");
-          const incomePerReceiver = pick(
-            row,
-            "GemiddeldInkomenPerInkomensontvanger_65"
-          );
-          const pctLowIncomeHouseholds = pick(
-            row,
-            "k_40HuishoudensMetLaagsteInkomen_70"
-          );
-          const pctHighIncomeHouseholds = pick(
-            row,
-            "k_20HuishoudensMetHoogsteInkomen_71"
-          );
-          const shareLowIncomePersons = pick(
-            row,
-            "k_40PersonenMetLaagsteInkomen_67"
-          );
-          const shareHighIncomePersons = pick(
-            row,
-            "k_20PersonenMetHoogsteInkomen_68"
-          );
-
-          // Huishoudens
-          const pctLowIncomeHouseholdsValue = pick(
-            row,
-            "HuishoudensMetEenLaagInkomen_72"
-          );
-          const pctLowIncomeHouseholdsPercent =
-            pctLowIncomeHouseholdsValue && totalPopulation
-              ? Math.round((pctLowIncomeHouseholdsValue / totalPopulation) * 100 * 10) / 10
-              : null;
-
-          // Sociale zekerheid
-          const shareBijstand = pick(row, "PersonenPerSoortUitkeringBijstand_74");
-          const shareWW = pick(row, "PersonenPerSoortUitkeringWW_76");
-          const shareAOW = pick(row, "PersonenPerSoortUitkeringAOW_77");
-
-          // Economie
-          const totalBedrijven = pick(row, "BedrijfsvestigingenTotaal_78");
-          const bedrijvenLandbouw = pick(row, "ALandbouwBosbouwEnVisserij_79");
-          const bedrijvenIndustrie = pick(row, "BFNijverheidEnEnergie_80");
-          const bedrijvenHandel = pick(row, "GIHandelEnHoreca_81");
-
-          // Mobiliteit
-          const carsPerHousehold = pick(
-            row,
-            "PersonenautoSPerHuishouden_91"
-          );
-          const totalCars = pick(row, "PersonenautoSTotaal_86");
-
-          // Voorzieningen-afstand (km)
-          const amenities = {
-            supermarket_km: pick(row, "AfstandTotGroteSupermarkt_95"),
-            huisarts_km: pick(row, "AfstandTotHuisartsenpraktijk_94"),
-            kinderdagverblijf_km: pick(
-              row,
-              "AfstandTotKinderdagverblijf_96"
-            ),
-            school_km: pick(row, "AfstandTotSchool_97"),
-          };
-
-          // Criminaliteitscijfers uit 83765NED
-          const geweldsMisdrijven = pick(row, "GeweldsEnSeksueleMisdrijven_108");
-          const vermogensMisdrijven = pick(row, "TotaalDiefstalUitWoningSchuurED_106");
-
-          // Mate van stedelijkheid (1=zeer sterk stedelijk, 5=niet stedelijk)
-          const stedelijkheid = pick(row, "MateVanStedelijkheid_104");
-
-          // Woningtypes (%)
-          const pctAppartementen = pick(row, "PercentageEengezinswoning_36");
-          const pctEengezinswoningen = pick(row, "PercentageMeergezinswoning_37");
-
-          // Woning leeftijd (%)
-          const pctWoningenVoor2000 = pick(row, "BouwjaarVoor2000_45");
-          const pctWoningenVanaf2000 = pick(row, "BouwjaarVanaf2000_46");
-
-          cbsStats = {
-            buurtCode,
-            gemeenteNaam,
-            population,
-            density,
-            pct65Plus,
-            incomePerPerson,
-            incomePerReceiver,
-            pctLowIncomeHouseholds,
-            pctHighIncomeHouseholds,
-            shareLowIncomePersons,
-            shareHighIncomePersons,
-            carsPerHousehold,
-            totalCars,
-            ageGroups,
-            amenities,
-            // Nieuwe criminaliteitscijfers
-            geweldsMisdrijven,
-            vermogensMisdrijven,
-            // Nieuwe leefbaarheid stats
-            stedelijkheid,
-            pctAppartementen,
-            pctEengezinswoningen,
-            pctWoningenVoor2000,
-            pctWoningenVanaf2000,
-          };
-
-          console.log("CBS row for buurt:", buurtCode, row);
-        }
-      }
-    }
-
-    // 4) Crime data (if available in backend)
-    let crimeData = null;
-    if (buurtCode) {
-      try {
-        const crimeResp = await fetch(`/api/buurt-crime?buurt_code=${encodeURIComponent(buurtCode)}`);
-        if (crimeResp.ok) {
-          crimeData = await crimeResp.json();
-          console.log("Crime data for buurt:", buurtCode, crimeData);
-        }
-      } catch (err) {
-        console.log("No crime data available for buurt:", buurtCode);
+      // Gebruik onze eigen backend endpoint voor voorbewerkte CBS data
+      const statsResp = await fetch(`/api/buurt-stats?buurt_code=${encodeURIComponent(buurtCode)}`);
+      if (statsResp.ok) {
+        cbsStats = await statsResp.json();
+        console.log("CBS stats for buurt:", buurtCode, cbsStats);
       }
     }
 
@@ -600,7 +441,6 @@ export default function App() {
       buildingInfo,
       cbsStats,
       geometry,
-      crimeData,
     });
   }
 
@@ -835,19 +675,6 @@ export default function App() {
       }
     }
 
-    // 4) Crime data (if available in backend)
-    let crimeData = null;
-    if (buurtCode) {
-      try {
-        const crimeResp = await fetch(`/api/buurt-crime?buurt_code=${encodeURIComponent(buurtCode)}`);
-        if (crimeResp.ok) {
-          crimeData = await crimeResp.json();
-          console.log("Crime data for buurt:", buurtCode, crimeData);
-        }
-      } catch (err) {
-        console.log("No crime data available for buurt:", buurtCode);
-        }
-      }
 
       setResult({
         address: formattedAddress,
@@ -1119,7 +946,7 @@ export default function App() {
         geometry,
         crimeData,
       });
-  }
+    }
 
 
   function buildAiData() {
@@ -1836,7 +1663,7 @@ export default function App() {
       setSimilarBuurten(null);
       setClusterInfo(null);
       return;
-    }
+  }
 
     const trimmed = buurtCode.trim();
     setMlLoading(true);
@@ -1879,7 +1706,7 @@ export default function App() {
         <h1>Wat is mijn straat?</h1>
         <p className="subtitle">
               In één scherm: pand, buurtcijfers, ML-inzichten en een AI-buurtverhaal.
-            </p>
+        </p>
           </div>
         </div>
       </header>
@@ -2081,47 +1908,47 @@ export default function App() {
                 <div className="analysis-right">
                   {/* Buurtcijfers */}
                   <div className="panel-block">
-                    <h2>Buurt in één oogopslag</h2>
-                    {result.cbsStats ? (
-                      <div className="stat-grid">
-                        {result.cbsStats.population != null && (
-                          <div className="stat-card">
-                            <div className="stat-label">Inwoners (totaal)</div>
-                            <div className="stat-value">
-                              {formatOrNA(result.cbsStats.population, nf0)}
-                            </div>
-                            <div className="stat-help">
+            <h2>Buurt in één oogopslag</h2>
+            {result.cbsStats ? (
+              <div className="stat-grid">
+                {result.cbsStats.population != null && (
+                  <div className="stat-card">
+                    <div className="stat-label">Inwoners (totaal)</div>
+                    <div className="stat-value">
+                      {formatOrNA(result.cbsStats.population, nf0)}
+                    </div>
+                    <div className="stat-help">
                               Hoeveel mensen er in de buurt wonen (CBS-data).
-                            </div>
-                          </div>
-                        )}
+                    </div>
+                  </div>
+                )}
 
-                        {result.cbsStats.density != null && (
-                          <div className="stat-card">
-                            <div className="stat-label">Bevolkingsdichtheid</div>
-                            <div className="stat-value">
-                              {formatOrNA(result.cbsStats.density, nf0)}
-                              <span className="small"> / km²</span>
-                            </div>
-                            <div className="stat-help">
+                {result.cbsStats.density != null && (
+                  <div className="stat-card">
+                    <div className="stat-label">Bevolkingsdichtheid</div>
+                    <div className="stat-value">
+                      {formatOrNA(result.cbsStats.density, nf0)}
+                      <span className="small"> / km²</span>
+                    </div>
+                    <div className="stat-help">
                               Hogere dichtheid betekent meestal een drukkere wijk met
                               meer voorzieningen.
-                            </div>
-                          </div>
-                        )}
+                    </div>
+                  </div>
+                )}
 
-                        {result.cbsStats.pct65Plus != null && (
-                          <div className="stat-card">
-                            <div className="stat-label">% 65-plus</div>
-                            <div className="stat-value">
-                              {formatOrNA(result.cbsStats.pct65Plus, nf1)}
-                              <span className="small"> %</span>
-                            </div>
-                            <div className="stat-help">
-                              Percentage bewoners van 65 jaar en ouder.
-                            </div>
-                          </div>
-                        )}
+                {result.cbsStats.pct65Plus != null && (
+                  <div className="stat-card">
+                    <div className="stat-label">% 65-plus</div>
+                    <div className="stat-value">
+                      {formatOrNA(result.cbsStats.pct65Plus, nf1)}
+                      <span className="small"> %</span>
+                    </div>
+                    <div className="stat-help">
+                      Percentage bewoners van 65 jaar en ouder.
+                    </div>
+                  </div>
+                )}
 
                         {/* Leeftijd chart */}
                         {ageChartOptions && (
@@ -2133,19 +1960,19 @@ export default function App() {
                           </div>
                         )}
 
-                        {result.cbsStats.incomePerPerson != null && (
-                          <div className="stat-card">
-                            <div className="stat-label">
-                              Gem. inkomen per persoon
-                            </div>
-                            <div className="stat-value">
+                {result.cbsStats.incomePerPerson != null && (
+                  <div className="stat-card">
+                    <div className="stat-label">
+                      Gem. inkomen per persoon
+                    </div>
+                    <div className="stat-value">
                               € {formatOrNA(result.cbsStats.incomePerPerson, nf0)}
-                            </div>
-                            <div className="stat-help">
-                              Gemiddeld besteedbaar inkomen per persoon (CBS).
-                            </div>
-                          </div>
-                        )}
+                    </div>
+                    <div className="stat-help">
+                      Gemiddeld besteedbaar inkomen per persoon (CBS).
+                    </div>
+                  </div>
+                )}
 
                         {/* Inkomen chart */}
                         {incomeChartOptions && (
@@ -2298,10 +2125,10 @@ export default function App() {
                             </div>
                           </div>
                         )}
-                      </div>
-                    ) : (
+              </div>
+            ) : (
                       <p className="small">Geen CBS-buurtcijfers gevonden.</p>
-                    )}
+            )}
                   </div>
 
                   <h2>Vergelijk met andere buurt</h2>
@@ -2322,7 +2149,7 @@ export default function App() {
                       <div ref={compareMapContainerRef} className="compare-map" />
             <p className="small">
                         Vergelijkingslocatie. Geen juridisch kaartmateriaal.
-                      </p>
+            </p>
               </div>
             )}
 
