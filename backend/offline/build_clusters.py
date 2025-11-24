@@ -41,7 +41,9 @@ FEATURE_COLUMNS: List[str] = [
     "HuishOnderOfRondSociaalMinimum_73",
     "MateVanStedelijkheid_104",
     "k_0Tot15Jaar_8",
+    "k_15Tot25Jaar_9",
     "k_25Tot45Jaar_10",
+    "k_45Tot65Jaar_11",
     "k_65JaarOfOuder_12",
 ]
 
@@ -138,8 +140,15 @@ def llm_label_for_cluster(cluster_id: int, df_cluster: pd.DataFrame) -> Dict[str
     summary = summarize_cluster_for_prompt(df_cluster)
 
     prompt = f"""
-Je bent een Nederlandse data-analist. Je krijgt cijfers voor een cluster
-van vergelijkbare buurten. Geef een korte duiding.
+Je bent een Nederlandse data-analist. Je krijgt gemiddelde cijfers voor een cluster
+van vergelijkbare buurten. Analyseer vooral de leeftijdsverdeling (k_*-kolommen).
+
+BELANGRIJK: Baseer je label PRIMAIR op de leeftijdsverdeling:
+- HOOG percentage k_65JaarOfOuder_12 → "vergrijzend" of "ouder"
+- HOOG percentage k_0Tot15Jaar_8 EN k_15Tot25Jaar_9 → "jong & gezin"
+- HOOG percentage k_25Tot45Jaar_10 → "jong & actief"
+- HOOG percentage k_45Tot65Jaar_11 → "middelbaar"
+- BALANS → "gemengd"
 
 Schrijf je antwoord EXACT in twee regels:
 
@@ -196,8 +205,8 @@ def main():
     scaler = StandardScaler()
     X = scaler.fit_transform(df_features)
 
-    # KMeans
-    n_clusters = 8
+    # KMeans - meer clusters voor betere leeftijdsscheiding
+    n_clusters = 12
     print(f"Fitting KMeans with k={n_clusters} ...")
     km = KMeans(n_clusters=n_clusters, random_state=42, n_init="auto")
     cluster_ids = km.fit_predict(X)
