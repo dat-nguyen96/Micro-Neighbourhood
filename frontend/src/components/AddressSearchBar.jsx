@@ -102,6 +102,20 @@ export default function AddressSearchBar({ onSelect, loading }) {
 
   // --- Handle keyboard navigation ---
   function onKeyDown(e) {
+    // Handle Enter key for search
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (open && suggestions.length > 0 && activeIndex >= 0) {
+        // Select the active suggestion
+        chooseSuggestion(suggestions[activeIndex]);
+      } else {
+        // No suggestions or dropdown not open - search with current query
+        onSelect(query);
+      }
+      return;
+    }
+
+    // Only handle arrow keys if dropdown is open with suggestions
     if (!open || suggestions.length === 0) return;
 
     if (e.key === "ArrowDown") {
@@ -112,11 +126,6 @@ export default function AddressSearchBar({ onSelect, loading }) {
       setActiveIndex((i) =>
         i <= 0 ? suggestions.length - 1 : i - 1
       );
-    } else if (e.key === "Enter") {
-      if (activeIndex >= 0) {
-        e.preventDefault();
-        chooseSuggestion(suggestions[activeIndex]);
-      }
     }
   }
 
