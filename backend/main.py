@@ -43,7 +43,7 @@ client = OpenAI(api_key=OPENAI_API_KEY)
 
 # Path to precomputed CSV with features + clusters
 DATA_DIR = BASE_DIR / "data"
-CLUSTERS_CSV = DATA_DIR / "clusters_improved.csv"
+CLUSTERS_CSV = DATA_DIR / "clusters.csv"
 
 FEATURE_COLUMNS = [
     "AantalInwoners_5",
@@ -467,14 +467,13 @@ def _ensure_cbs_data_loaded():
     df = pd.read_csv(CLUSTERS_CSV)
 
     # Check dat we de benodigde kolommen hebben
-    required_cols = ["WijkenEnBuurten"] + FEATURE_COLUMNS + ["cluster_id", "cluster_label_short_new", "cluster_label_long_new"]
+    required_cols = ["WijkenEnBuurten"] + FEATURE_COLUMNS + ["cluster_id", "cluster_label", "cluster_label_long"]
     missing = [c for c in required_cols if c not in df.columns]
     if missing:
         raise RuntimeError(f"Ontbrekende kolommen in CSV: {missing}")
 
-    # Hernoem de nieuwe kolommen naar de verwachte namen
-    df["cluster_label_short"] = df["cluster_label_short_new"]
-    df["cluster_label_long"] = df["cluster_label_long_new"]
+    # Hernoem cluster_label naar cluster_label_short voor consistentie
+    df["cluster_label_short"] = df["cluster_label"]
 
     CBS_DF = df
 

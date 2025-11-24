@@ -29,6 +29,29 @@ CLUSTERS_CSV = DATA_DIR / "clusters.csv"
 # OpenAI client
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY")) if os.getenv("OPENAI_API_KEY") else None
 
+# Cluster label mappings - realistische korte namen en uitgebreide beschrijvingen (8 clusters)
+CLUSTER_SHORT_NAMES = {
+    0: "Jong & Levendig",
+    1: "Vergrijzend & Groen",
+    2: "Modern & Veilig",
+    3: "Stedelijk & Risico",
+    4: "Landelijk & Rustig",
+    5: "Sociaal & Uitdagend",
+    6: "Luxueus & Afgezonderd",
+    7: "Traditioneel & Gemengd"
+}
+
+CLUSTER_LONG_DESCRIPTIONS = {
+    0: "Dynamische wijken met veel jonge bewoners en culturele diversiteit. Levendig straatleven met restaurants en cafés, maar ook hogere criminaliteit door druk sociaal leven. Geschikt voor mensen die houden van een diverse omgeving maar hogere veiligheidsrisico's accepteren.",
+    1: "Rustige woonwijken met veel oudere bewoners en groene ruimtes. Veilige straten en goede zorgvoorzieningen, maar soms gevoel van vereenzaming. Perfect voor senioren die rust zoeken, maar mogelijk minder sociale activiteiten.",
+    2: "Moderne appartementencomplexen met goede beveiliging en stedelijke voorzieningen. Schone, goed onderhouden buurten met moderne architectuur. Ideaal voor professionals die stadsleven willen combineren met veiligheid, maar vaak hogere woonkosten.",
+    3: "Drukke stedelijke centra met hoge bevolkingsdichtheid en aanzienlijke criminaliteit. Uitstekende openbaar vervoer maar ook veiligheidsrisico's door grote mensenmassa's. Geschikt voor mensen die stedelijke dynamiek willen maar hogere criminaliteit accepteren.",
+    4: "Landelijke gebieden met veel natuur en ruimte. Rustige woonomgevingen maar soms geïsoleerd gevoel en beperkte voorzieningen. Uitstekend voor mensen die natuur waarderen maar afstand tot stedelijke voorzieningen accepteren.",
+    5: "Betaalbare woonwijken met sociale cohesie maar ook hogere criminaliteit en sociale problemen. Goede gemeenschapszin maar uitdagingen met veiligheid en leefbaarheid. Voor mensen met beperkt budget die sociale samenhang waarderen boven veiligheid.",
+    6: "Luxueuze woonwijken met hoge veiligheidsnormen maar soms gevoel van uitsluiting. Moderne woningen met goede beveiliging maar hogere woonkosten en mogelijk minder sociale verbondenheid. Voor mensen die exclusiviteit en veiligheid boven betaalbaarheid stellen.",
+    7: "Traditionele woonwijken met sterke gemeenschapsbanden maar gemengde veiligheidsniveaus. Gezellige straten met lokale voorzieningen maar soms verouderde woningen en sociale uitdagingen. Ideaal voor mensen die warme gemeenschap waarderen maar verschillende leefbaarheidsniveaus accepteren."
+}
+
 def fetch_all_data():
     """
     Haal alle benodigde data op van CBS:
@@ -451,7 +474,7 @@ def build_clusters():
     X = scaler.fit_transform(df_features)
 
     # KMeans
-    n_clusters = 12
+    n_clusters = 8
     kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init="auto")
     clusters = kmeans.fit_predict(X)
 
@@ -459,53 +482,28 @@ def build_clusters():
     pca = PCA(n_components=2, random_state=42)
     X_pca = pca.fit_transform(X)
 
-    # Labels genereren
+    # Gebruik predefined catchy cluster labels
     cluster_labels = {}
+    cluster_labels_long = {}
+
     for i in range(n_clusters):
-        cluster_data = df_features[clusters == i]
-        if client:
-            # Genereer korte beschrijving met LLM
-            summary = f"Cluster {i}: {len(cluster_data)} buurten, "
-            summary += f"gemiddelde inwoners: {cluster_data['AantalInwoners_5'].mean():.0f}, "
-            summary += f"stedelijkheid: {cluster_data['MateVanStedelijkheid_122'].mean():.1f}"
+        # Gebruik predefined korte naam of fallback naar "Cluster X"
+        short_name = CLUSTER_SHORT_NAMES.get(i, f"Cluster {i}")
+        long_desc = CLUSTER_LONG_DESCRIPTIONS.get(i, f"Een woonomgeving met specifieke karakteristieken die aansluit bij verschillende leefstijlen en behoeften.")
 
-            # Voeg gedetailleerde criminaliteit info toe aan prompt
-            crime_info = []
-            if "crime_sexual_violence" in cluster_data.columns and cluster_data['crime_sexual_violence'].mean() > 0:
-                crime_info.append(f"seksueel geweld: {cluster_data['crime_sexual_violence'].mean():.1f}")
-            if "crime_violence" in cluster_data.columns and cluster_data['crime_violence'].mean() > 0:
-                crime_info.append(f"geweldsmisdrijven: {cluster_data['crime_violence'].mean():.1f}")
-            if "crime_property" in cluster_data.columns and cluster_data['crime_property'].mean() > 0:
-                crime_info.append(f"vermogensmisdrijven: {cluster_data['crime_property'].mean():.1f}")
-            if "crime_vandalism" in cluster_data.columns and cluster_data['crime_vandalism'].mean() > 0:
-                crime_info.append(f"vernieling/openbare orde: {cluster_data['crime_vandalism'].mean():.1f}")
+        cluster_labels[i] = short_name
+        cluster_labels_long[i] = long_desc
 
-            if crime_info:
-                summary += f", criminaliteit ({', '.join(crime_info)})"
-            elif "total_crimes" in cluster_data.columns and cluster_data['total_crimes'].mean() > 0:
-                summary += f", criminaliteit: {cluster_data['total_crimes'].mean():.1f}"
-
-            try:
-                response = client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[
-                        {"role": "system", "content": "Geef een korte Nederlandse beschrijving (max 20 woorden) van dit buurt cluster."},
-                        {"role": "user", "content": summary}
-                    ],
-                    max_tokens=50
-                )
-                label = response.choices[0].message.content.strip()
-            except:
-                label = f"Cluster {i}"
-        else:
-            label = f"Cluster {i}"
-
-        cluster_labels[i] = label
+    print("Cluster labels toegewezen:")
+    for i in range(n_clusters):
+        cluster_count = (clusters == i).sum()
+        print(f"  Cluster {i}: {cluster_labels[i]} ({cluster_count} buurten)")
 
     # Resultaat dataframe
     result_df = df_clean.copy()
     result_df["cluster_id"] = clusters
     result_df["cluster_label"] = result_df["cluster_id"].map(cluster_labels)
+    result_df["cluster_label_long"] = result_df["cluster_id"].map(cluster_labels_long)
     result_df["pca_x"] = X_pca[:, 0]
     result_df["pca_y"] = X_pca[:, 1]
 
