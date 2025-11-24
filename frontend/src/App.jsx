@@ -129,8 +129,106 @@ export default function App() {
   const [buurtNamen, setBuurtNamen] = useState(new Map()); // Map<buurtCode, buurtNaam>
   const [mlLoading, setMlLoading] = useState(false);
 
+  // Comparison neighborhood state
+  const [compareQuery, setCompareQuery] = useState("");
+  const [compareLoading, setCompareLoading] = useState(false);
+  const [compareError, setCompareError] = useState("");
+  const [compareResult, setCompareResult] = useState(null);
+  const [compareClusterInfo, setCompareClusterInfo] = useState(null);
+
+  // Sync zoom between main and comparison maps
+  function syncMaps(sourceMap, targetMap) {
+    let lock = false;
+    sourceMap.on("move", () => {
+      if (lock) return;
+      lock = true;
+      const c = sourceMap.getCenter();
+      const z = sourceMap.getZoom();
+      targetMap.jumpTo({ center: c, zoom: z });
+      lock = false;
+    });
+  }
+
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
+
+  // Comparison map refs
+  const compareMapContainerRef = useRef(null);
+  const compareMapRef = useRef(null);
+
+  // Neighborhood boundary state
+  const [buurtBoundary, setBuurtBoundary] = useState(null);
+  const [compareBuurtBoundary, setCompareBuurtBoundary] = useState(null);
+
+  // Load neighborhood boundary for main neighborhood
+  useEffect(() => {
+    if (!result?.cbsStats?.buurtCode) {
+      setBuurtBoundary(null);
+      return;
+    }
+
+    fetch(`/api/buurt-geometry?buurt_code=${encodeURIComponent(result.cbsStats.buurtCode)}`)
+      .then((resp) => {
+        if (!resp.ok) throw new Error("Buurt geometry ophalen mislukt");
+        return resp.json();
+      })
+      .then((feature) => {
+        setBuurtBoundary(feature);
+        console.log("Main buurt boundary geladen:", feature);
+      })
+      .catch((err) => {
+        console.warn("Kon main buurt boundary niet laden:", err);
+        setBuurtBoundary(null);
+      });
+  }, [result?.cbsStats?.buurtCode]);
+
+  // Load cluster info for comparison neighborhood
+  useEffect(() => {
+    if (!compareResult?.cbsStats?.buurtCode) {
+      setCompareClusterInfo(null);
+      return;
+    }
+
+    setMlLoading(true);
+    fetch(`/api/buurt-cluster?buurt_code=${encodeURIComponent(compareResult.cbsStats.buurtCode)}`)
+      .then((resp) => {
+        if (!resp.ok) throw new Error("Cluster info ophalen mislukt");
+        return resp.json();
+      })
+      .then((info) => {
+        setCompareClusterInfo(info);
+        console.log("Compare cluster info geladen:", info);
+      })
+      .catch((err) => {
+        console.warn("Kon compare cluster info niet laden:", err);
+        setCompareClusterInfo(null);
+      })
+      .finally(() => {
+        setMlLoading(false);
+      });
+  }, [compareResult?.cbsStats?.buurtCode]);
+
+  // Load neighborhood boundary for comparison neighborhood
+  useEffect(() => {
+    if (!compareResult?.cbsStats?.buurtCode) {
+      setCompareBuurtBoundary(null);
+      return;
+    }
+
+    fetch(`/api/buurt-geometry?buurt_code=${encodeURIComponent(compareResult.cbsStats.buurtCode)}`)
+      .then((resp) => {
+        if (!resp.ok) throw new Error("Compare buurt geometry ophalen mislukt");
+        return resp.json();
+      })
+      .then((feature) => {
+        setCompareBuurtBoundary(feature);
+        console.log("Compare buurt boundary geladen:", feature);
+      })
+      .catch((err) => {
+        console.warn("Kon compare buurt boundary niet laden:", err);
+        setCompareBuurtBoundary(null);
+      });
+  }, [compareResult?.cbsStats?.buurtCode]);
 
   // Load buurt namen on startup
   useEffect(() => {
@@ -196,7 +294,29 @@ export default function App() {
     }
   }
 
-  async function runSearch(address, pdokDoc) {
+  async function handleCompareSearchFromSuggestion(address, pdokDoc) {
+    setCompareQuery(address);
+    setCompareError("");
+    setCompareResult(null);
+    setCompareClusterInfo(null);
+
+    if (!address.trim()) {
+      setCompareError('Vul een adres in (bijv. "Damrak 1, Amsterdam").');
+      return;
+    }
+
+    setCompareLoading(true);
+    try {
+      await runCompareSearch(address, pdokDoc);
+    } catch (err) {
+      console.error(err);
+      setCompareError(err.message || "Er ging iets mis.");
+    } finally {
+      setCompareLoading(false);
+    }
+  }
+
+  async function runCompareSearch(address, pdokDoc) {
     // Als we een pdokDoc hebben, gebruik deze direct
     // Anders doe een normale PDOK zoekopdracht
     let doc;
@@ -713,6 +833,261 @@ export default function App() {
       });
   }
 
+  async function runCompareSearch(address, pdokDoc) {
+    // Als we een pdokDoc hebben, gebruik deze direct
+    // Anders doe een normale PDOK zoekopdracht
+    let doc;
+    if (pdokDoc) {
+      doc = pdokDoc;
+    } else {
+      // Fallback: doe normale PDOK zoekopdracht
+      const locUrl = `${PDOK_FREE_URL}?q=${encodeURIComponent(
+        address
+      )}&rows=1&fq=type:adres`;
+      const locResp = await fetch(locUrl, {
+        headers: { Accept: "application/json" },
+      });
+      if (!locResp.ok) {
+        throw new Error("Locatieserver gaf een foutmelding.");
+      }
+      const locData = await locResp.json();
+      const docs = locData.response?.docs || [];
+      if (docs.length === 0) {
+        throw new Error("Geen adres gevonden voor deze zoekopdracht.");
+      }
+      doc = docs[0];
+    }
+
+    const formattedAddress =
+      doc.weergavenaam ||
+      `${doc.straatnaam || ""} ${doc.huisnummer || ""} ${
+        doc.postcode || ""
+      } ${doc.woonplaatsnaam || ""}`;
+
+    // Coördinaten uit centroide_ll
+    let coords = null;
+    if (doc.centroide_ll) {
+      const match = doc.centroide_ll.match(/POINT\(([^ ]+) ([^)]+)\)/);
+      if (match) {
+        const lon = parseFloat(match[1]);
+        const lat = parseFloat(match[2]);
+        if (!Number.isNaN(lat) && !Number.isNaN(lon)) {
+          coords = [lat, lon];
+        }
+      }
+    }
+
+    // 2) BAG pand info + geometry
+    let buildingInfo = null;
+    let geometry = null;
+    let pandIdentificatie = null;
+    if (doc.id && doc.id.includes("pand")) {
+      pandIdentificatie = doc.id.split(":").pop();
+    }
+    if (pandIdentificatie) {
+      const bagUrl = `${BAG_PAND_URL}?identificatie=${pandIdentificatie}&f=json`;
+      const bagResp = await fetch(bagUrl);
+      if (bagResp.ok) {
+        const bagData = await bagResp.json();
+        const features = bagData.features || bagData.items || [];
+        if (features.length > 0) {
+          const feature = features[0];
+          const props = feature.properties || feature;
+          buildingInfo = {
+            bouwjaar: props.bouwjaar,
+            gebruiksdoel: props.gebruiksdoel || props.gebruiksdoelen,
+            status: props.status,
+          };
+          if (feature.geometry) {
+            geometry = feature.geometry;
+          }
+        }
+      }
+    }
+
+    // 3) CBS kerncijfers (Kerncijfers wijken en buurten 2017 - 83765NED)
+    const buurtCode =
+      doc.buurtcode || doc.wijkcode || doc.gemeentecode || null;
+
+    let cbsStats = null;
+    if (buurtCode) {
+      const filter = encodeURIComponent(`WijkenEnBuurten eq '${buurtCode}'`);
+      const cbsUrl = `${CBS_TYPED_URL}?$filter=${filter}&$top=1`;
+      const cbsResp = await fetch(cbsUrl);
+      if (cbsResp.ok) {
+        const cbsData = await cbsResp.json();
+        const rows = cbsData.value || [];
+        if (rows.length > 0) {
+          const row = rows[0];
+
+          // Helper: accepteert string of array van keys
+          const pick = (obj, keys) => {
+            const arr = Array.isArray(keys) ? keys : [keys];
+            for (const k of arr) {
+              if (
+                Object.prototype.hasOwnProperty.call(obj, k) &&
+                obj[k] !== null &&
+                obj[k] !== undefined
+              ) {
+                return obj[k];
+              }
+            }
+            return null;
+          };
+
+          const population = pick(row, "AantalInwoners_5");
+          const density = pick(row, "Bevolkingsdichtheid_33");
+          const gemeenteNaam = pick(row, "Gemeentenaam_1");
+
+          // Leeftijdsgroepen (absolute aantallen)
+          const ageGroups = {
+            "0–15": pick(row, "k_0Tot15Jaar_8"),
+            "15–25": pick(row, "k_15Tot25Jaar_9"),
+            "25–45": pick(row, "k_25Tot45Jaar_10"),
+            "45–65": pick(row, "k_45Tot65Jaar_11"),
+            "65+": pick(row, "k_65JaarOfOuder_12"),
+          };
+
+          const totalPopulation = population || 0;
+          const over65 = ageGroups["65+"] || 0;
+          const pct65Plus =
+            totalPopulation && over65
+              ? Math.round((over65 / totalPopulation) * 100 * 10) / 10
+              : null;
+
+          // Inkomen
+          const incomePerPerson = pick(row, "GemiddeldInkomenPerInwoner_66");
+          const incomePerReceiver = pick(
+            row,
+            "GemiddeldInkomenPerInkomensontvanger_65"
+          );
+          const pctLowIncomeHouseholds = pick(
+            row,
+            "k_40HuishoudensMetLaagsteInkomen_70"
+          );
+          const pctHighIncomeHouseholds = pick(
+            row,
+            "k_20HuishoudensMetHoogsteInkomen_71"
+          );
+          const shareLowIncomePersons = pick(
+            row,
+            "k_40PersonenMetLaagsteInkomen_67"
+          );
+          const shareHighIncomePersons = pick(
+            row,
+            "k_20PersonenMetHoogsteInkomen_68"
+          );
+
+          // Huishoudens
+          const pctLowIncomeHouseholdsValue = pick(
+            row,
+            "HuishoudensMetEenLaagInkomen_72"
+          );
+          const pctLowIncomeHouseholdsPercent =
+            pctLowIncomeHouseholdsValue && totalPopulation
+              ? Math.round((pctLowIncomeHouseholdsValue / totalPopulation) * 100 * 10) / 10
+              : null;
+
+          // Sociale zekerheid
+          const shareBijstand = pick(row, "PersonenPerSoortUitkeringBijstand_74");
+          const shareWW = pick(row, "PersonenPerSoortUitkeringWW_76");
+          const shareAOW = pick(row, "PersonenPerSoortUitkeringAOW_77");
+
+          // Economie
+          const totalBedrijven = pick(row, "BedrijfsvestigingenTotaal_78");
+          const bedrijvenLandbouw = pick(row, "ALandbouwBosbouwEnVisserij_79");
+          const bedrijvenIndustrie = pick(row, "BFNijverheidEnEnergie_80");
+          const bedrijvenHandel = pick(row, "GIHandelEnHoreca_81");
+
+          // Mobiliteit
+          const carsPerHousehold = pick(
+            row,
+            "PersonenautoSPerHuishouden_91"
+          );
+          const totalCars = pick(row, "PersonenautoSTotaal_86");
+
+          // Voorzieningen-afstand (km)
+          const amenities = {
+            supermarket_km: pick(row, "AfstandTotGroteSupermarkt_95"),
+            huisarts_km: pick(row, "AfstandTotHuisartsenpraktijk_94"),
+            kinderdagverblijf_km: pick(
+              row,
+              "AfstandTotKinderdagverblijf_96"
+            ),
+            school_km: pick(row, "AfstandTotSchool_97"),
+          };
+
+          // Criminaliteitscijfers uit 83765NED
+          const geweldsMisdrijven = pick(row, "GeweldsEnSeksueleMisdrijven_108");
+          const vermogensMisdrijven = pick(row, "TotaalDiefstalUitWoningSchuurED_106");
+
+          // Mate van stedelijkheid (1=zeer sterk stedelijk, 5=niet stedelijk)
+          const stedelijkheid = pick(row, "MateVanStedelijkheid_104");
+
+          // Woningtypes (%)
+          const pctAppartementen = pick(row, "PercentageEengezinswoning_36");
+          const pctEengezinswoningen = pick(row, "PercentageMeergezinswoning_37");
+
+          // Woning leeftijd (%)
+          const pctWoningenVoor2000 = pick(row, "BouwjaarVoor2000_45");
+          const pctWoningenVanaf2000 = pick(row, "BouwjaarVanaf2000_46");
+
+          cbsStats = {
+            buurtCode,
+            gemeenteNaam,
+            population,
+            density,
+            pct65Plus,
+            incomePerPerson,
+            incomePerReceiver,
+            pctLowIncomeHouseholds,
+            pctHighIncomeHouseholds,
+            shareLowIncomePersons,
+            shareHighIncomePersons,
+            carsPerHousehold,
+            totalCars,
+            ageGroups,
+            amenities,
+            // Nieuwe criminaliteitscijfers
+            geweldsMisdrijven,
+            vermogensMisdrijven,
+            // Nieuwe leefbaarheid stats
+            stedelijkheid,
+            pctAppartementen,
+            pctEengezinswoningen,
+            pctWoningenVoor2000,
+            pctWoningenVanaf2000,
+          };
+
+          console.log("CBS row for compare buurt:", buurtCode, row);
+        }
+      }
+    }
+
+    // 4) Crime data (if available in backend)
+    let crimeData = null;
+    if (buurtCode) {
+      try {
+        const crimeResp = await fetch(`/api/buurt-crime?buurt_code=${encodeURIComponent(buurtCode)}`);
+        if (crimeResp.ok) {
+          crimeData = await crimeResp.json();
+          console.log("Crime data for compare buurt:", buurtCode, crimeData);
+        }
+      } catch (err) {
+        console.log("No crime data available for compare buurt:", buurtCode);
+      }
+    }
+
+    setCompareResult({
+      address: formattedAddress,
+      coords,
+      buildingInfo,
+      cbsStats,
+      geometry,
+      crimeData,
+    });
+  }
+
   function buildAiData() {
     if (!result) return null;
 
@@ -1070,6 +1445,7 @@ export default function App() {
     new maplibregl.Marker({ color: "#22c55e" }).setLngLat(center).addTo(map);
 
     map.on("load", () => {
+      // Building geometry
       if (result.geometry) {
         const feature = {
           type: "Feature",
@@ -1107,9 +1483,48 @@ export default function App() {
           src.setData(feature);
         }
       }
+
+      // Neighborhood boundary
+      if (buurtBoundary) {
+        if (!map.getSource("buurt")) {
+          map.addSource("buurt", {
+            type: "geojson",
+            data: buurtBoundary,
+          });
+
+          map.addLayer({
+            id: "buurt-fill",
+            type: "fill",
+            source: "buurt",
+            paint: {
+              "fill-color": "#22c55e",
+              "fill-opacity": 0.1,
+            },
+          });
+
+          map.addLayer({
+            id: "buurt-outline",
+            type: "line",
+            source: "buurt",
+            paint: {
+              "line-color": "#22c55e",
+              "line-width": 3,
+            },
+          });
+        } else {
+          const src = map.getSource("buurt");
+          src.setData(buurtBoundary);
+        }
+      }
     });
 
     mapRef.current = map;
+
+    // Sync zoom with comparison map if it exists
+    if (compareMapRef.current) {
+      syncMaps(map, compareMapRef.current);
+      syncMaps(compareMapRef.current, map);
+    }
 
     return () => {
       if (mapRef.current) {
@@ -1117,7 +1532,123 @@ export default function App() {
         mapRef.current = null;
       }
     };
-  }, [result?.coords, result?.geometry]);
+  }, [result?.coords, result?.geometry, compareResult?.coords, buurtBoundary]);
+
+  // Comparison MapLibre: render when compare coords/geometry change
+  useEffect(() => {
+    if (!compareMapContainerRef.current || !compareResult?.coords) {
+      return;
+    }
+
+    if (compareMapRef.current) {
+      compareMapRef.current.remove();
+      compareMapRef.current = null;
+    }
+
+    const [lat, lon] = compareResult.coords;
+    const center = [lon, lat]; // [lon, lat] voor MapLibre
+
+    const compareMap = new maplibregl.Map({
+      container: compareMapContainerRef.current,
+      style: MAP_STYLE_URL,
+      center,
+      zoom: 16, // iets lager zoom voor vergelijkingskaart
+    });
+
+    compareMap.addControl(new maplibregl.NavigationControl(), "top-right");
+
+    // Blauwe marker voor vergelijkingsbuurt
+    new maplibregl.Marker({ color: "#3b82f6" }).setLngLat(center).addTo(compareMap);
+
+    compareMap.on("load", () => {
+      // Building geometry
+      if (compareResult.geometry) {
+        const feature = {
+          type: "Feature",
+          geometry: compareResult.geometry,
+          properties: {},
+        };
+
+        if (!compareMap.getSource("compare-building")) {
+          compareMap.addSource("compare-building", {
+            type: "geojson",
+            data: feature,
+          });
+
+          compareMap.addLayer({
+            id: "compare-building-fill",
+            type: "fill",
+            source: "compare-building",
+            paint: {
+              "fill-color": "#3b82f6",
+              "fill-opacity": 0.3,
+            },
+          });
+
+          compareMap.addLayer({
+            id: "compare-building-outline",
+            type: "line",
+            source: "compare-building",
+            paint: {
+              "line-color": "#3b82f6",
+              "line-width": 2,
+            },
+          });
+        } else {
+          const src = compareMap.getSource("compare-building");
+          src.setData(feature);
+        }
+      }
+
+      // Neighborhood boundary
+      if (compareBuurtBoundary) {
+        if (!compareMap.getSource("compare-buurt")) {
+          compareMap.addSource("compare-buurt", {
+            type: "geojson",
+            data: compareBuurtBoundary,
+          });
+
+          compareMap.addLayer({
+            id: "compare-buurt-fill",
+            type: "fill",
+            source: "compare-buurt",
+            paint: {
+              "fill-color": "#3b82f6",
+              "fill-opacity": 0.1,
+            },
+          });
+
+          compareMap.addLayer({
+            id: "compare-buurt-outline",
+            type: "line",
+            source: "compare-buurt",
+            paint: {
+              "line-color": "#3b82f6",
+              "line-width": 3,
+            },
+          });
+        } else {
+          const src = compareMap.getSource("compare-buurt");
+          src.setData(compareBuurtBoundary);
+        }
+      }
+    });
+
+    compareMapRef.current = compareMap;
+
+    // Sync zoom with main map if it exists
+    if (mapRef.current) {
+      syncMaps(compareMap, mapRef.current);
+      syncMaps(mapRef.current, compareMap);
+    }
+
+    return () => {
+      if (compareMapRef.current) {
+        compareMapRef.current.remove();
+        compareMapRef.current = null;
+      }
+    };
+  }, [compareResult?.coords, compareResult?.geometry, result?.coords, compareBuurtBoundary]);
 
   // ML: fetch similar buurten + cluster info when we know the buurtCode
   useEffect(() => {
@@ -1275,7 +1806,7 @@ export default function App() {
 
             {/* MAP + STATS + AI/ML INSIGHTS */}
             <section className="section insights-grid">
-              {/* Left: big map */}
+              {/* Left: main neighborhood map */}
               <div className="insights-map-column">
                 {result.coords && (
                   <div className="map-card">
@@ -1285,7 +1816,31 @@ export default function App() {
                     </p>
                   </div>
                 )}
+              </div>
 
+              {/* Middle: comparison neighborhood */}
+              <div className="insights-compare-column">
+                <h3>Vergelijk met andere buurt</h3>
+
+                <AddressSearchBar
+                  loading={compareLoading}
+                  onSelect={(address, rawDoc) => {
+                    setCompareQuery(address);
+                    // Direct starten met zoek-functie
+                    handleCompareSearchFromSuggestion(address, rawDoc);
+                  }}
+                />
+
+                {compareError && <div className="error">{compareError}</div>}
+
+                {compareResult && compareResult.coords && (
+                  <div className="map-card" style={{ marginTop: "1rem" }}>
+                    <div ref={compareMapContainerRef} className="compare-map" />
+                    <p className="small">
+                      Vergelijkingslocatie. Geen juridisch kaartmateriaal.
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* Right: panels */}
@@ -1591,6 +2146,86 @@ export default function App() {
                     </p>
                   )}
                 </div>
+
+                {/* Vergelijkingspanel - alleen tonen als beide buurten geladen zijn */}
+                {compareResult && result && (
+                  <div className="panel-block" style={{ marginTop: "1rem" }}>
+                    <h2>Vergelijking</h2>
+                    <div className="comparison-grid">
+                      {/* Bevolking vergelijking */}
+                      {(result.cbsStats?.population != null || compareResult.cbsStats?.population != null) && (
+                        <div className="comparison-row">
+                          <div className="comparison-label">Inwoners</div>
+                          <div className="comparison-value main-value">
+                            {formatOrNA(result.cbsStats?.population, nf0)}
+                          </div>
+                          <div className="comparison-value compare-value">
+                            {formatOrNA(compareResult.cbsStats?.population, nf0)}
+                          </div>
+                          <div className="comparison-diff">
+                            {result.cbsStats?.population && compareResult.cbsStats?.population
+                              ? `${result.cbsStats.population > compareResult.cbsStats.population ? '+' : ''}${(result.cbsStats.population - compareResult.cbsStats.population).toLocaleString('nl-NL')}`
+                              : 'n.v.t.'}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Dichtheid vergelijking */}
+                      {(result.cbsStats?.density != null || compareResult.cbsStats?.density != null) && (
+                        <div className="comparison-row">
+                          <div className="comparison-label">Dichtheid (/km²)</div>
+                          <div className="comparison-value main-value">
+                            {formatOrNA(result.cbsStats?.density, nf0)}
+                          </div>
+                          <div className="comparison-value compare-value">
+                            {formatOrNA(compareResult.cbsStats?.density, nf0)}
+                          </div>
+                          <div className="comparison-diff">
+                            {result.cbsStats?.density && compareResult.cbsStats?.density
+                              ? `${result.cbsStats.density > compareResult.cbsStats.density ? '+' : ''}${(result.cbsStats.density - compareResult.cbsStats.density).toFixed(0)}`
+                              : 'n.v.t.'}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Inkomen vergelijking */}
+                      {(result.cbsStats?.incomePerPerson != null || compareResult.cbsStats?.incomePerPerson != null) && (
+                        <div className="comparison-row">
+                          <div className="comparison-label">Inkomen p.p. (×1000€)</div>
+                          <div className="comparison-value main-value">
+                            {formatOrNA(result.cbsStats?.incomePerPerson, nf1)}
+                          </div>
+                          <div className="comparison-value compare-value">
+                            {formatOrNA(compareResult.cbsStats?.incomePerPerson, nf1)}
+                          </div>
+                          <div className="comparison-diff">
+                            {result.cbsStats?.incomePerPerson && compareResult.cbsStats?.incomePerPerson
+                              ? `${result.cbsStats.incomePerPerson > compareResult.cbsStats.incomePerPerson ? '+' : ''}${(result.cbsStats.incomePerPerson - compareResult.cbsStats.incomePerPerson).toFixed(1)}`
+                              : 'n.v.t.'}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Cluster vergelijking */}
+                      {(clusterInfo?.label || compareClusterInfo?.label) && (
+                        <div className="comparison-row">
+                          <div className="comparison-label">Buurt type</div>
+                          <div className="comparison-value main-value">
+                            {clusterInfo?.label || 'n.v.t.'}
+                          </div>
+                          <div className="comparison-value compare-value">
+                            {compareClusterInfo?.label || 'n.v.t.'}
+                          </div>
+                          <div className="comparison-diff">
+                            {clusterInfo?.label && compareClusterInfo?.label
+                              ? clusterInfo.label === compareClusterInfo.label ? 'gelijk' : 'verschilt'
+                              : 'n.v.t.'}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </section>
           </>

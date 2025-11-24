@@ -723,6 +723,36 @@ async def buurt_cluster(
     )
 
 
+@app.get("/api/buurt-geometry")
+async def buurt_geometry(buurt_code: str = Query(..., description="CBS buurtcode, bv. BU05990110")):
+    """
+    Haal buurt-omlijning op via PDOK WFS.
+    Retourneert GeoJSON geometry van de buurt.
+    """
+    try:
+        # PDOK WFS voor wijken/buurten
+        wfs_url = f"https://geodata.nationaalgeoregister.nl/wijkenbuurten2023/wfs?service=WFS&request=GetFeature&typeName=buurt_2023&outputFormat=application/json&CQL_FILTER=buurtcode='{buurt_code}'"
+
+        async with httpx.AsyncClient() as client:
+            response = await client.get(wfs_url)
+            response.raise_for_status()
+
+            geojson = response.json()
+
+            # Controleer of we features hebben
+            if not geojson.get("features"):
+                raise HTTPException(status_code=404, detail=f"Geen buurt-geometry gevonden voor {buurt_code}")
+
+            # Retourneer de eerste feature (moet er maar één zijn)
+            feature = geojson["features"][0]
+            return feature
+
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"PDOK WFS fout: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Geometry ophaal fout: {str(e)}")
+
+
 @app.get("/api/buurt-crime")
 async def buurt_crime(
     buurt_code: str = Query(..., description="CBS buurtcode, bv. BU05990110")
