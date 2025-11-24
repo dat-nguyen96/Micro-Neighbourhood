@@ -88,7 +88,7 @@ function getClusterVisual(clusterId, labelShort) {
 }
 
 function capitalizeFirst(str) {
-  if (!str) return str;
+  if (!str || typeof str !== 'string') return str || '';
   return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
@@ -232,36 +232,55 @@ export default function App() {
 
   // Load buurt namen on startup
   useEffect(() => {
+    console.log("Loading buurt namen from CSV...");
     fetch("/data/cbs_buurt_namen_85984.csv")
-      .then((resp) => resp.text())
+      .then((resp) => {
+        console.log("CSV fetch response status:", resp.status);
+        if (!resp.ok) {
+          throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+        }
+        return resp.text();
+      })
       .then((csvText) => {
+        console.log("CSV text length:", csvText.length);
         const lines = csvText.trim().split("\n");
-        if (lines.length === 0) return;
+        console.log("CSV lines:", lines.length);
+
+        if (lines.length === 0) {
+          console.warn("CSV file is empty");
+          return;
+        }
 
         const header = lines[0].split(",");
+        console.log("CSV header:", header);
         const identifierIdx = header.indexOf("Identifier");
         const titleIdx = header.indexOf("Title");
 
+        console.log("Column indices - Identifier:", identifierIdx, "Title:", titleIdx);
+
         if (identifierIdx === -1 || titleIdx === -1) {
           console.warn("Buurt namen CSV heeft niet de verwachte kolommen");
+          console.warn("Available columns:", header);
           return;
         }
 
         const namenMap = new Map();
-        for (let i = 1; i < lines.length; i++) {
+        for (let i = 1; i < Math.min(lines.length, 10); i++) {  // Test eerst met eerste 10 regels
           const cols = lines[i].split(",");
-          const buurtCode = cols[identifierIdx]?.replace(/"/g, "").trim();
-          const buurtNaam = cols[titleIdx]?.replace(/"/g, "").trim();
+          const buurtCode = cols[identifierIdx]?.replace(/"/g, "")?.trim();
+          const buurtNaam = cols[titleIdx]?.replace(/"/g, "")?.trim();
+          console.log(`Line ${i}: buurtCode="${buurtCode}", buurtNaam="${buurtNaam}"`);
           if (buurtCode && buurtNaam) {
             namenMap.set(buurtCode, buurtNaam);
           }
         }
 
         setBuurtNamen(namenMap);
-        console.log(`Geladen: ${namenMap.size} buurt namen`);
+        console.log(`✅ Geladen: ${namenMap.size} buurt namen`);
       })
       .catch((err) => {
-        console.warn("Kon buurt namen niet laden:", err);
+        console.error("❌ Kon buurt namen niet laden:", err);
+        console.error("Error details:", err.message);
       });
   }, []);
 
@@ -427,12 +446,24 @@ export default function App() {
 
     let cbsStats = null;
     if (buurtCode) {
-      // Gebruik onze eigen backend endpoint voor voorbewerkte CBS data
-      const statsResp = await fetch(`/api/buurt-stats?buurt_code=${encodeURIComponent(buurtCode)}`);
-      if (statsResp.ok) {
-        cbsStats = await statsResp.json();
-        console.log("CBS stats for buurt:", buurtCode, cbsStats);
+      console.log("Fetching CBS stats for buurt:", buurtCode);
+      try {
+        // Gebruik onze eigen backend endpoint voor voorbewerkte CBS data
+        const statsResp = await fetch(`/api/buurt-stats?buurt_code=${encodeURIComponent(buurtCode)}`);
+        console.log("CBS stats response status:", statsResp.status);
+        if (statsResp.ok) {
+          cbsStats = await statsResp.json();
+          console.log("✅ CBS stats loaded:", cbsStats);
+        } else {
+          console.error("❌ CBS stats request failed:", statsResp.status, statsResp.statusText);
+          const errorText = await statsResp.text();
+          console.error("Error details:", errorText);
+        }
+      } catch (err) {
+        console.error("❌ CBS stats fetch error:", err);
       }
+    } else {
+      console.warn("⚠️ No buurtCode found in PDOK response");
     }
 
     setResult({
@@ -1140,7 +1171,7 @@ export default function App() {
         .map((n) => ({
           x: n.pca_x,
           y: n.pca_y,
-          name: `${getBuurtNaam(n.buurt_code) || n.naam || n.buurt_code} – ${n.gemeente}`,
+          name: `${getBuurtNaam(n.buurt_code) || n.naam || n.buurt_code || 'Onbekend'} – ${n.gemeente || 'Onbekend'}`,
           cluster: n.cluster_label_short,
         })) || [];
 
@@ -1201,11 +1232,13 @@ export default function App() {
       return null;
     }
 
+    try {
+
     const points = [];
     // huidige buurt in het midden
-    if (result?.address) {
+    if (result?.address && typeof result.address === 'string') {
       points.push({
-        name: result.address,
+        name: result.address.trim() || 'Huidige locatie',
         x: 0,
         y: 0,
         cluster: clusterInfo?.cluster ?? null,
@@ -1215,14 +1248,23 @@ export default function App() {
 
     const neighbours = similarBuurten.neighbours;
     const n = neighbours.length;
+    console.log("KNN Scatter: Processing", n, "neighbours");
     neighbours.forEach((nb, i) => {
+      console.log("Processing neighbour", i, nb);
+      if (!nb) {
+        console.warn("Skipping null neighbour at index", i);
+        return; // Skip null entries
+      }
       const angle = (2 * Math.PI * i) / n;
       const r = nb.distance || 0.5;
+      const naam = (nb.naam && typeof nb.naam === 'string') ? nb.naam.trim() : 'Onbekend';
+      const gemeente = (nb.gemeente && typeof nb.gemeente === 'string') ? nb.gemeente.trim() : 'Onbekend';
+      console.log("Neighbour data:", { naam, gemeente, naamType: typeof nb.naam, gemeenteType: typeof nb.gemeente });
       points.push({
-        name: `${nb.naam.trim()} – ${nb.gemeente.trim()}`,
+        name: `${naam} – ${gemeente}`,
         x: r * Math.cos(angle),
         y: r * Math.sin(angle),
-        cluster: nb.cluster,
+        cluster: nb.cluster || 0,
         label_short: nb.cluster_label_short || null,
         isBase: false,
       });
@@ -1278,6 +1320,10 @@ export default function App() {
         },
       },
     };
+    } catch (error) {
+      console.error('Error creating KNN scatter options:', error);
+      return null;
+    }
   }, [similarBuurten, result?.address, clusterInfo]);
 
   // Radar chart: buurtvergelijking
@@ -1285,6 +1331,8 @@ export default function App() {
     if (!result?.cbsStats || !compareResult?.cbsStats) {
       return null;
     }
+
+    try {
 
     // Normaliseer waarden naar 0-100 schaal voor radar chart
     const normalize = (value, min, max) => {
@@ -1305,25 +1353,25 @@ export default function App() {
     ];
 
     const mainData = [
-      normalize(result.cbsStats.density, 0, 20000), // dichtheid 0-20k/km²
-      normalize(result.cbsStats.incomePerPerson, 20, 60), // inkomen 20k-60k ×1000€
-      normalize(result.cbsStats.pct65Plus, 0, 40), // 65+ 0-40%
-      normalize(result.cbsStats.stedelijkheid, 1, 5) * 20, // stedelijkheid 1-5 → 20-100
-      normalize(result.cbsStats.seksueelGeweld, 0, 2), // seksueel geweld 0-2 per 1000
-      normalize(result.cbsStats.geweldsMisdrijven, 0, 10), // geweld 0-10 per 1000
-      normalize(result.cbsStats.vermogensMisdrijven, 0, 20), // vermogens 0-20 per 1000
-      normalize(result.cbsStats.vernielingsMisdrijven, 0, 5), // vernieling 0-5 per 1000
+      normalize(result.cbsStats?.density, 0, 20000), // dichtheid 0-20k/km²
+      normalize(result.cbsStats?.incomePerPerson, 20, 60), // inkomen 20k-60k ×1000€
+      normalize(result.cbsStats?.pct65Plus, 0, 40), // 65+ 0-40%
+      normalize(result.cbsStats?.stedelijkheid, 1, 5) * 20, // stedelijkheid 1-5 → 20-100
+      normalize(result.cbsStats?.seksueelGeweld, 0, 2), // seksueel geweld 0-2 per 1000
+      normalize(result.cbsStats?.geweldsMisdrijven, 0, 10), // geweld 0-10 per 1000
+      normalize(result.cbsStats?.vermogensMisdrijven, 0, 20), // vermogens 0-20 per 1000
+      normalize(result.cbsStats?.vernielingsMisdrijven, 0, 5), // vernieling 0-5 per 1000
     ];
 
     const compareData = [
-      normalize(compareResult.cbsStats.density, 0, 20000),
-      normalize(compareResult.cbsStats.incomePerPerson, 20, 60),
-      normalize(compareResult.cbsStats.pct65Plus, 0, 40),
-      normalize(compareResult.cbsStats.stedelijkheid, 1, 5) * 20,
-      normalize(compareResult.cbsStats.seksueelGeweld, 0, 2),
-      normalize(compareResult.cbsStats.geweldsMisdrijven, 0, 10),
-      normalize(compareResult.cbsStats.vermogensMisdrijven, 0, 20),
-      normalize(compareResult.cbsStats.vernielingsMisdrijven, 0, 5),
+      normalize(compareResult.cbsStats?.density, 0, 20000),
+      normalize(compareResult.cbsStats?.incomePerPerson, 20, 60),
+      normalize(compareResult.cbsStats?.pct65Plus, 0, 40),
+      normalize(compareResult.cbsStats?.stedelijkheid, 1, 5) * 20,
+      normalize(compareResult.cbsStats?.seksueelGeweld, 0, 2),
+      normalize(compareResult.cbsStats?.geweldsMisdrijven, 0, 10),
+      normalize(compareResult.cbsStats?.vermogensMisdrijven, 0, 20),
+      normalize(compareResult.cbsStats?.vernielingsMisdrijven, 0, 5),
     ];
 
     return {
@@ -1400,8 +1448,8 @@ export default function App() {
           }
 
           return `<b>${category}</b><br/>
-                  <span style="color: #22c55e">■ ${result.address.split(',')[0]}:</span> ${mainLabel}<br/>
-                  <span style="color: #3b82f6">■ ${compareResult.address.split(',')[0]}:</span> ${compareLabel}`;
+                  <span style="color: #22c55e">■ ${(result.address || '').split(',')[0] || 'Resultaat'}:</span> ${mainLabel}<br/>
+                  <span style="color: #3b82f6">■ ${(compareResult.address || '').split(',')[0] || 'Vergelijking'}:</span> ${compareLabel}`;
         },
       },
       plotOptions: {
@@ -1415,13 +1463,13 @@ export default function App() {
       },
       series: [
         {
-          name: result.address.split(',')[0], // Eerste deel van adres
+          name: (result.address || '').split(',')[0] || 'Resultaat', // Eerste deel van adres
           data: mainData,
           color: "#22c55e",
           fillColor: "rgba(34, 197, 94, 0.1)",
         },
         {
-          name: compareResult.address.split(',')[0], // Eerste deel van adres
+          name: (compareResult.address || '').split(',')[0] || 'Vergelijking', // Eerste deel van adres
           data: compareData,
           color: "#3b82f6",
           fillColor: "rgba(59, 130, 246, 0.1)",
@@ -1435,6 +1483,10 @@ export default function App() {
         enabled: false,
       },
     };
+    } catch (error) {
+      console.error('Error creating comparison radar options:', error);
+      return null;
+    }
   }, [result, compareResult]);
 
   // MapLibre: render when coords/geometry change
@@ -1689,11 +1741,24 @@ export default function App() {
       ),
     ])
       .then(([similarJson, clusterJson]) => {
+        console.log("ML data received:", { similarJson, clusterJson });
         setSimilarBuurten(similarJson);
         setClusterInfo(clusterJson);
       })
       .catch((err) => {
         console.error("ML endpoints error:", err);
+        console.error("Error details:", err.message, err.stack);
+        // Try individual calls to see which one fails
+        fetch(`/api/similar-buurten?buurt_code=${encodeURIComponent(trimmed)}&k=5`)
+          .then(r => r.ok ? r.json() : Promise.reject(`Similar buurten: ${r.status}`))
+          .then(data => console.log("Similar buurten OK:", data))
+          .catch(e => console.error("Similar buurten failed:", e));
+
+        fetch(`/api/buurt-cluster?buurt_code=${encodeURIComponent(trimmed)}`)
+          .then(r => r.ok ? r.json() : Promise.reject(`Cluster: ${r.status}`))
+          .then(data => console.log("Cluster OK:", data))
+          .catch(e => console.error("Cluster failed:", e));
+
         setSimilarBuurten(null);
         setClusterInfo(null);
       })
@@ -1705,9 +1770,16 @@ export default function App() {
       ? getIncomeBadge(result.cbsStats.incomePerPerson)
       : null;
 
-  const clusterVisual = clusterInfo
-    ? getClusterVisual(clusterInfo.cluster, capitalizeFirst(clusterInfo.label))
-    : null;
+  const clusterVisual = (() => {
+    try {
+      return clusterInfo
+        ? getClusterVisual(clusterInfo.cluster, capitalizeFirst(clusterInfo.label))
+        : null;
+    } catch (error) {
+      console.error('Error creating cluster visual:', error);
+      return null;
+    }
+  })();
 
   return (
     <div className="app-shell">
@@ -1741,10 +1813,10 @@ export default function App() {
             <section className="section">
             <h2>Adres</h2>
             <div className="badge-row">
-                <span className="badge primary-badge">{result.address}</span>
+                <span className="badge primary-badge">{result.address || 'Onbekend adres'}</span>
               {result.cbsStats?.buurtCode && (
                 <span className="badge">
-                    Buurt: {getBuurtNaam(result.cbsStats.buurtCode) || result.cbsStats.buurtCode.trim()}
+                    Buurt: {getBuurtNaam(result.cbsStats.buurtCode) || (result.cbsStats.buurtCode || '').trim()}
                   </span>
                 )}
                 {clusterInfo && (
