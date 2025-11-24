@@ -57,9 +57,12 @@ FEATURE_COLUMNS = [
     "k_0Tot15Jaar_8",
     "k_25Tot45Jaar_10",
     "k_65JaarOfOuder_12",
-    "crime_property",    # Vermogensmisdrijven (diefstal)
-    "crime_violence",    # Geweldsmisdrijven
-    "crime_vandalism",   # Vernieling/openbare orde
+    # Gedetailleerde criminaliteit - 5 categorieën
+    "total_crimes",           # Totaal misdrijven
+    "crime_sexual_violence",  # Seksueel geweld/zeden
+    "crime_violence",         # Geweldsmisdrijven
+    "crime_property",         # Vermogensmisdrijven
+    "crime_vandalism",        # Vernieling/openbare orde
 ]
 
 # Globale in-memory data (lazy geladen uit CSV)
@@ -364,11 +367,23 @@ def analyse_neighbourhood_data(data: Dict[str, Any]) -> Tuple[str, Dict[str, Opt
                 safety = "hoger criminaliteitsniveau"
             summary_lines.append(f"- Misdaad per 1000 inwoners: {rate:.1f} ({safety})")
 
-    # Gedetailleerde criminaliteitscijfers uit CBS 85984NED
+    # Gedetailleerde criminaliteitscijfers - GESCHEIDEN PER CATEGORIE
     if "cbsStats" in data and data["cbsStats"]:
         cbs_stats = data["cbsStats"]
         detailed_crime = []
 
+        # Seksueel geweld apart
+        if "seksueelGeweld" in cbs_stats and cbs_stats["seksueelGeweld"] is not None:
+            seksueel_rate = float(cbs_stats["seksueelGeweld"])
+            if seksueel_rate < 0.5:
+                seksueel_level = "zeer laag"
+            elif seksueel_rate < 1:
+                seksueel_level = "laag"
+            else:
+                seksueel_level = "relatief hoog"
+            detailed_crime.append(f"- Seksueel geweld/zeden: {seksueel_rate:.1f} per 1.000 inw. ({seksueel_level})")
+
+        # Geweldsmisdrijven
         if "geweldsMisdrijven" in cbs_stats and cbs_stats["geweldsMisdrijven"] is not None:
             geweld_rate = float(cbs_stats["geweldsMisdrijven"])
             if geweld_rate < 2:
@@ -379,8 +394,9 @@ def analyse_neighbourhood_data(data: Dict[str, Any]) -> Tuple[str, Dict[str, Opt
                 geweld_level = "gemiddeld geweldsniveau"
             else:
                 geweld_level = "hoog geweldsniveau"
-            detailed_crime.append(f"- Gewelds- en seksuele misdrijven: {geweld_rate:.1f} per 1.000 inw. ({geweld_level})")
+            detailed_crime.append(f"- Geweldsmisdrijven: {geweld_rate:.1f} per 1.000 inw. ({geweld_level})")
 
+        # Vermogensmisdrijven
         if "vermogensMisdrijven" in cbs_stats and cbs_stats["vermogensMisdrijven"] is not None:
             vermogen_rate = float(cbs_stats["vermogensMisdrijven"])
             if vermogen_rate < 5:
@@ -391,7 +407,18 @@ def analyse_neighbourhood_data(data: Dict[str, Any]) -> Tuple[str, Dict[str, Opt
                 vermogen_level = "gemiddeld inbraakrisico"
             else:
                 vermogen_level = "hoog inbraakrisico"
-            detailed_crime.append(f"- Vermogensmisdrijven (inbraak/diefstal woning): {vermogen_rate:.1f} per 1.000 inw. ({vermogen_level})")
+            detailed_crime.append(f"- Vermogensmisdrijven: {vermogen_rate:.1f} per 1.000 inw. ({vermogen_level})")
+
+        # Vernieling/openbare orde
+        if "vernielingsMisdrijven" in cbs_stats and cbs_stats["vernielingsMisdrijven"] is not None:
+            vernieling_rate = float(cbs_stats["vernielingsMisdrijven"])
+            if vernieling_rate < 1:
+                vernieling_level = "zeer laag"
+            elif vernieling_rate < 3:
+                vernieling_level = "laag"
+            else:
+                vernieling_level = "relatief hoog"
+            detailed_crime.append(f"- Vernieling/openbare orde: {vernieling_rate:.1f} per 1.000 inw. ({vernieling_level})")
 
         if detailed_crime:
             if not crime_info_added:
@@ -772,11 +799,31 @@ async def buurt_crime(
         row = CBS_DF.iloc[idx]
 
         crime_data = {}
+
+        # Gedetailleerde criminaliteitsdata
         if "total_crimes" in row and pd.notna(row["total_crimes"]):
             crime_data["total_crimes"] = float(row["total_crimes"])
-            # Calculate crime rate per 1000 inhabitants if we have population data
-            if "AantalInwoners_5" in row and pd.notna(row["AantalInwoners_5"]) and row["AantalInwoners_5"] > 0:
-                crime_data["crime_rate_per_1000"] = (row["total_crimes"] / row["AantalInwoners_5"]) * 1000
+
+        if "crime_sexual_violence" in row and pd.notna(row["crime_sexual_violence"]):
+            crime_data["sexual_violence"] = float(row["crime_sexual_violence"])
+
+        if "crime_violence" in row and pd.notna(row["crime_violence"]):
+            crime_data["violence"] = float(row["crime_violence"])
+
+        if "crime_property" in row and pd.notna(row["crime_property"]):
+            crime_data["property"] = float(row["crime_property"])
+
+        if "crime_vandalism" in row and pd.notna(row["crime_vandalism"]):
+            crime_data["vandalism"] = float(row["crime_vandalism"])
+
+        # Calculate crime rate per 1000 inhabitants if we have population data
+        if crime_data and "AantalInwoners_5" in row and pd.notna(row["AantalInwoners_5"]) and row["AantalInwoners_5"] > 0:
+            population = float(row["AantalInwoners_5"])
+            crime_data["total_crime_rate_per_1000"] = (crime_data["total_crimes"] / population) * 1000
+            crime_data["sexual_violence_rate_per_1000"] = (crime_data.get("sexual_violence", 0) / population) * 1000
+            crime_data["violence_rate_per_1000"] = (crime_data.get("violence", 0) / population) * 1000
+            crime_data["property_rate_per_1000"] = (crime_data.get("property", 0) / population) * 1000
+            crime_data["vandalism_rate_per_1000"] = (crime_data.get("vandalism", 0) / population) * 1000
 
         return {
             "buurt_code": buurt_code.strip(),
@@ -859,11 +906,12 @@ async def buurt_stats(buurt_code: str = Query(..., description="CBS buurtcode, b
         # Inkomen - niet beschikbaar in 85984NED dataset
         "incomePerPerson": None,
 
-        # Criminaliteit (uit onze voorbewerkte data)
-        "vermogensMisdrijven": float(row.get("crime_property", 0)) if pd.notna(row.get("crime_property")) else None,
+        # Criminaliteit (uit onze voorbewerkte data) - GEDTAILLEERD
+        "totaalMisdrijven": float(row.get("total_crimes", 0)) if pd.notna(row.get("total_crimes")) else None,
+        "seksueelGeweld": float(row.get("crime_sexual_violence", 0)) if pd.notna(row.get("crime_sexual_violence")) else None,
         "geweldsMisdrijven": float(row.get("crime_violence", 0)) if pd.notna(row.get("crime_violence")) else None,
+        "vermogensMisdrijven": float(row.get("crime_property", 0)) if pd.notna(row.get("crime_property")) else None,
         "vernielingsMisdrijven": float(row.get("crime_vandalism", 0)) if pd.notna(row.get("crime_vandalism")) else None,
-        "totaalMisdrijven": float(row.get("GeregistreerdeMisdrijven_1", 0)) if pd.notna(row.get("GeregistreerdeMisdrijven_1")) else None,
 
         # Afstanden tot voorzieningen
         "afstandHuisarts": float(row.get("AfstandTotHuisartsenpraktijk_112", 0)) if pd.notna(row.get("AfstandTotHuisartsenpraktijk_112")) else None,
