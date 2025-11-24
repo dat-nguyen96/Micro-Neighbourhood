@@ -17,6 +17,7 @@ Een moderne webapp die Nederlandse wijken analyseert met PDOK adressen, CBS demo
 - CBS Kerncijfers Wijken en Buurten (volledige dataset)
 - Bevolking, dichtheid, leeftijdsgroepen, inkomen, huishoudens
 - Huishoudsamenstelling, woningtypes, voorzieningen afstanden
+- **CBS Politie Criminaliteit 2024** - Geregistreerde misdrijven per buurt
 - Nederlandse locale formatting en visualisaties
 
 ### 🗺️ Moderne Interactieve Kaart
@@ -54,14 +55,15 @@ Een moderne webapp die Nederlandse wijken analyseert met PDOK adressen, CBS demo
 - FastAPI - Moderne Python web framework
 - OpenAI API - AI taalmodel integratie
 - Scikit-learn - Machine learning (KMeans, KNN)
-- Pandas/GeoPandas - Data processing
+- Pandas/GeoPandas - Data processing + CBS crime data integratie
 - Uvicorn - ASGI server voor productie
 - Python 3.11 - Docker deployment
 
 ### Data Bronnen & ML
 - **PDOK Locatieserver** - Adres geocoding + BAG pand geometrie
 - **CBS StatLine OData** - Uitgebreide demografische data (11 features)
-- **KMeans Clustering** - 8 buurt-types gebaseerd op socio-demografische data
+- **CBS Politie 47018NED** - Criminaliteitscijfers 2024 (geregistreerde misdrijven)
+- **KMeans Clustering** - 12 buurt-types gebaseerd op socio-demografische data
 - **LLM Labeling** - AI-g gegenereerde begrijpelijke cluster beschrijvingen
 - **KNN Recommender** - Vergelijkbare buurten gebaseerd op feature similarity
 
@@ -183,6 +185,23 @@ Response:
 }
 ```
 
+### GET /api/buurt-crime
+Geeft criminaliteitsgegevens voor een buurt (2024 data).
+
+Parameters:
+- `buurt_code`: CBS buurtcode
+
+Response:
+```json
+{
+  "buurt_code": "BU05990110",
+  "crime_data": {
+    "total_crimes": 42,
+    "crime_rate_per_1000": 15.7
+  }
+}
+```
+
 ### GET /api/health
 Health check endpoint.
 
@@ -194,10 +213,11 @@ Health check endpoint.
 
 **✨ Laatste updates:**
 - AI verhalen verrijkt met cluster context en vergelijkbare buurten
+- **Criminaliteitsdata 2024 geïntegreerd** - CBS Politie misdaadcijfers per buurt
 - PCA visualisatie verplaatst onder de kaart voor betere layout
 - Cluster labels met hoofdletters voor professionele uitstraling
 - Vite proxy configuratie voor naadloze lokale development
-- Uitgebreide API responses met ML metadata en PCA coordinaten
+- Uitgebreide API responses met ML metadata, PCA coordinaten en crime data
 
 ### Docker Deployment op Railway
 

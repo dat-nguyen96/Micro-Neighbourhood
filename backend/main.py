@@ -43,7 +43,7 @@ client = OpenAI(api_key=OPENAI_API_KEY)
 
 # Path to precomputed CSV with features + clusters
 DATA_DIR = BASE_DIR / "data"
-CLUSTERS_CSV = DATA_DIR / "buurten_features_clusters.csv"
+CLUSTERS_CSV = DATA_DIR / "buurten_features_clusters_with_crime_2024.csv"
 
 FEATURE_COLUMNS = [
     "AantalInwoners_5",
@@ -218,7 +218,24 @@ def analyse_neighbourhood_data(data: Dict[str, Any]) -> Tuple[str, Dict[str, Opt
         if "label_long" in cluster_info:
             summary_lines.append(f"- Beschrijving: {cluster_info['label_long']}")
 
-    # 4) Vergelijkbare buurten (KNN resultaten)
+    # 4) Criminaliteitsgegevens
+    if "crimeData" in data and data["crimeData"]:
+        crime_info = data["crimeData"]
+        print(f"[ANALYSE] Crime data found: {crime_info}")
+        summary_lines.append("\nCriminaliteitsgegevens:")
+        if "total_crimes" in crime_info and crime_info["total_crimes"] is not None:
+            summary_lines.append(f"- Totaal geregistreerde misdrijven: {crime_info['total_crimes']}")
+        if "crime_rate_per_1000" in crime_info and crime_info["crime_rate_per_1000"] is not None:
+            rate = crime_info["crime_rate_per_1000"]
+            if rate < 30:
+                safety = "relatief veilig"
+            elif rate < 60:
+                safety = "gemiddeld veiligheidsniveau"
+            else:
+                safety = "hoger criminaliteitsniveau"
+            summary_lines.append(f"- Misdaad per 1000 inwoners: {rate:.1f} ({safety})")
+
+    # 5) Vergelijkbare buurten (KNN resultaten)
     if "similarBuurten" in data and data["similarBuurten"] and "neighbours" in data["similarBuurten"]:
         neighbours = data["similarBuurten"]["neighbours"]
         if neighbours and len(neighbours) > 0:
@@ -390,8 +407,9 @@ uitleg voor iemand die overweegt daar te wonen.
 
 BELANGRIJK: De data bevat ook machine learning informatie zoals:
 - Cluster classificatie (buurt type gebaseerd op socio-demografische data)
+- Criminaliteitsgegevens (geregistreerde misdrijven per buurt)
 - Vergelijkbare buurten gevonden via KNN algoritme
-Gebruik deze ML-inzichten om de buurtbeschrijving te verrijken met context over hoe deze buurt zich verhoudt tot andere Nederlandse buurten.
+Gebruik deze ML-inzichten om de buurtbeschrijving te verrijken met context over veiligheid, leefbaarheid en hoe deze buurt zich verhoudt tot andere Nederlandse buurten.
 
 Regels:
 - Schrijf in het Nederlands.
@@ -518,6 +536,39 @@ async def buurt_cluster(
         label=cluster_info["label_short"],
         label_long=cluster_info["label_long"],
     )
+
+
+@app.get("/api/buurt-crime")
+async def buurt_crime(
+    buurt_code: str = Query(..., description="CBS buurtcode, bv. BU05990110")
+):
+    """
+    Crime data endpoint: geeft criminaliteitsgegevens voor een buurt.
+    """
+    _ensure_cbs_data_loaded()
+    assert CBS_DF is not None
+
+    try:
+        idx = _find_buurt_index(buurt_code)
+        row = CBS_DF.iloc[idx]
+
+        crime_data = {}
+        if "total_crimes" in row and pd.notna(row["total_crimes"]):
+            crime_data["total_crimes"] = float(row["total_crimes"])
+            # Calculate crime rate per 1000 inhabitants if we have population data
+            if "AantalInwoners_5" in row and pd.notna(row["AantalInwoners_5"]) and row["AantalInwoners_5"] > 0:
+                crime_data["crime_rate_per_1000"] = (row["total_crimes"] / row["AantalInwoners_5"]) * 1000
+
+        return {
+            "buurt_code": buurt_code.strip(),
+            "crime_data": crime_data if crime_data else None,
+        }
+    except HTTPException:
+        # Buurt niet gevonden
+        return {
+            "buurt_code": buurt_code.strip(),
+            "crime_data": None,
+        }
 
 
 @app.get("/api/health")

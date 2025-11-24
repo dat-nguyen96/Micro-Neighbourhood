@@ -320,12 +320,27 @@ export default function App() {
         }
       }
 
+      // 4) Crime data (if available in backend)
+      let crimeData = null;
+      if (buurtCode) {
+        try {
+          const crimeResp = await fetch(`/api/buurt-crime?buurt_code=${encodeURIComponent(buurtCode)}`);
+          if (crimeResp.ok) {
+            crimeData = await crimeResp.json();
+            console.log("Crime data for buurt:", buurtCode, crimeData);
+          }
+        } catch (err) {
+          console.log("No crime data available for buurt:", buurtCode);
+        }
+      }
+
       setResult({
         address: formattedAddress,
         coords,
         buildingInfo,
         cbsStats,
         geometry,
+        crimeData,
       });
     } catch (err) {
       console.error(err);
@@ -345,6 +360,7 @@ export default function App() {
       geometry: result.geometry,
       clusterInfo: clusterInfo,
       similarBuurten: similarBuurten,
+      crimeData: result.crimeData,
     };
   }
 
@@ -974,6 +990,25 @@ export default function App() {
                           <div className="stat-help">
                             Berekend met GeoPandas op basis van BAG-geometrie
                             (indicatief).
+                          </div>
+                        </div>
+                      )}
+
+                      {result.crimeData && result.crimeData.total_crimes != null && (
+                        <div className="stat-card">
+                          <div className="stat-label">Criminaliteit</div>
+                          <div className="stat-value">
+                            {formatOrNA(result.crimeData.total_crimes, nf0)}
+                          </div>
+                          <div className="stat-help">
+                            Geregistreerde misdrijven in deze buurt (CBS Politie data).
+                            {result.crimeData.crime_rate_per_1000 != null && (
+                              <div style={{ marginTop: "0.25rem" }}>
+                                <small>
+                                  {formatOrNA(result.crimeData.crime_rate_per_1000, nf1)} per 1000 inwoners
+                                </small>
+                              </div>
+                            )}
                           </div>
                         </div>
                       )}
