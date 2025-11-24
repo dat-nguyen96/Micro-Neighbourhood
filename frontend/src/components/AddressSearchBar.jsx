@@ -92,6 +92,10 @@ export default function AddressSearchBar({ onSelect, loading }) {
   // --- Close dropdown when clicking outside ---
   useEffect(() => {
     const handler = (e) => {
+      // Don't close if clicking on a dropdown item (handled by chooseSuggestion)
+      if (e.target.closest('.dropdown-item')) {
+        return;
+      }
       if (boxRef.current && !boxRef.current.contains(e.target)) {
         setOpen(false);
       }
@@ -110,7 +114,9 @@ export default function AddressSearchBar({ onSelect, loading }) {
         chooseSuggestion(suggestions[activeIndex]);
       } else {
         // No suggestions or dropdown not open - search with current query
-        onSelect(query);
+        setTimeout(() => {
+          onSelect(query);
+        }, 10);
       }
       return;
     }
@@ -130,14 +136,23 @@ export default function AddressSearchBar({ onSelect, loading }) {
   }
 
   // --- When user clicks a suggestion ---
-  function chooseSuggestion(s) {
+  function chooseSuggestion(s, e) {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
     const label =
       s.weergavenaam ||
       `${s.straatnaam || ""} ${s.huisnummer || ""} ${s.woonplaatsnaam || ""}`;
 
     setQuery(label);
     setOpen(false);
-    onSelect(label, s); // pass raw PDOK doc
+
+    // Small delay to ensure dropdown is closed before triggering search
+    setTimeout(() => {
+      onSelect(label, s); // pass raw PDOK doc
+    }, 10);
   }
 
   return (
@@ -170,7 +185,7 @@ export default function AddressSearchBar({ onSelect, loading }) {
                 className={
                   "dropdown-item " + (i === activeIndex ? "active" : "")
                 }
-                onMouseDown={() => chooseSuggestion(s)}
+                onClick={(e) => chooseSuggestion(s, e)}
               >
                 {label}
                 {s.postcode && (
