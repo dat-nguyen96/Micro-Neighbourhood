@@ -289,6 +289,17 @@ export default function App() {
             const geweldsMisdrijven = pick(row, "GeweldsEnSeksueleMisdrijven_108");
             const vermogensMisdrijven = pick(row, "TotaalDiefstalUitWoningSchuurED_106");
 
+            // Mate van stedelijkheid (1=zeer sterk stedelijk, 5=niet stedelijk)
+            const stedelijkheid = pick(row, "MateVanStedelijkheid_104");
+
+            // Woningtypes (%)
+            const pctAppartementen = pick(row, "PercentageEengezinswoning_36");
+            const pctEengezinswoningen = pick(row, "PercentageMeergezinswoning_37");
+
+            // Woning leeftijd (%)
+            const pctWoningenVoor2000 = pick(row, "BouwjaarVoor2000_45");
+            const pctWoningenVanaf2000 = pick(row, "BouwjaarVanaf2000_46");
+
             // Leeftijdsgroepen (absolute aantallen)
             const ageGroups = {
               "0–15": pick(row, "k_0Tot15Jaar_8"),
@@ -364,6 +375,12 @@ export default function App() {
               // Nieuwe criminaliteitscijfers
               geweldsMisdrijven,
               vermogensMisdrijven,
+              // Nieuwe leefbaarheid stats
+              stedelijkheid,
+              pctAppartementen,
+              pctEengezinswoningen,
+              pctWoningenVoor2000,
+              pctWoningenVanaf2000,
             };
 
             console.log("CBS row for buurt:", buurtCode, row);
@@ -1089,6 +1106,70 @@ export default function App() {
                           </div>
                           <div className="stat-help">
                             Diefstal uit woning/schuur e.d. per 1.000 inwoners (CBS 2024).
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Voorzieningen afstanden */}
+                      {result.cbsStats?.amenities?.supermarket_km != null && (
+                        <div className="stat-card">
+                          <div className="stat-label">Afstand supermarkt</div>
+                          <div className="stat-value">
+                            {formatOrNA(result.cbsStats.amenities.supermarket_km, nf1)}
+                            <span className="small"> km</span>
+                          </div>
+                          <div className="stat-help">
+                            Gemiddelde afstand tot dichtstbijzijnde grote supermarkt.
+                          </div>
+                        </div>
+                      )}
+
+                      {result.cbsStats?.amenities?.huisarts_km != null && (
+                        <div className="stat-card">
+                          <div className="stat-label">Afstand huisarts</div>
+                          <div className="stat-value">
+                            {formatOrNA(result.cbsStats.amenities.huisarts_km, nf1)}
+                            <span className="small"> km</span>
+                          </div>
+                          <div className="stat-help">
+                            Gemiddelde afstand tot dichtstbijzijnde huisartsenpraktijk.
+                          </div>
+                        </div>
+                      )}
+
+                      {result.cbsStats?.stedelijkheid != null && (
+                        <div className="stat-card">
+                          <div className="stat-label">Mate van stedelijkheid</div>
+                          <div className="stat-value">
+                            {result.cbsStats.stedelijkheid}/5
+                          </div>
+                          <div className="stat-help">
+                            1=zeer sterk stedelijk, 5=niet stedelijk (CBS indeling).
+                          </div>
+                        </div>
+                      )}
+
+                      {result.cbsStats?.pctAppartementen != null && (
+                        <div className="stat-card">
+                          <div className="stat-label">Woningen</div>
+                          <div className="stat-value">
+                            {formatOrNA(result.cbsStats.pctAppartementen, nf1)}%
+                            <span className="small"> appartementen</span>
+                          </div>
+                          <div className="stat-help">
+                            Percentage appartementen in deze buurt.
+                          </div>
+                        </div>
+                      )}
+
+                      {result.cbsStats?.carsPerHousehold != null && (
+                        <div className="stat-card">
+                          <div className="stat-label">Auto's per huishouden</div>
+                          <div className="stat-value">
+                            {formatOrNA(result.cbsStats.carsPerHousehold, nf1)}
+                          </div>
+                          <div className="stat-help">
+                            Gemiddeld aantal personenauto's per huishouden.
                           </div>
                         </div>
                       )}

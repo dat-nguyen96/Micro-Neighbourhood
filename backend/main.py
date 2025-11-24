@@ -231,7 +231,72 @@ def analyse_neighbourhood_data(data: Dict[str, Any]) -> Tuple[str, Dict[str, Opt
     else:
         summary_lines.append("Geen numerieke indicatoren gevonden in de data.")
 
-    # 2) Geometrie / oppervlakte / centroid (optioneel)
+    # 2) Leefbaarheid & voorzieningen
+    if "cbsStats" in data and data["cbsStats"]:
+        cbs = data["cbsStats"]
+
+        # Stedelijkheid
+        if "stedelijkheid" in cbs and cbs["stedelijkheid"] is not None:
+            stedelijkheid = int(cbs["stedelijkheid"])
+            stedelijkheid_labels = {
+                1: "zeer sterk stedelijk",
+                2: "sterk stedelijk",
+                3: "matig stedelijk",
+                4: "weinig stedelijk",
+                5: "niet stedelijk"
+            }
+            label = stedelijkheid_labels.get(stedelijkheid, f"stedelijkheid niveau {stedelijkheid}")
+            summary_lines.append(f"Deze buurt is {label} (CBS stedelijkheidsschaal 1-5).")
+
+        # Woningen
+        if "pctAppartementen" in cbs and cbs["pctAppartementen"] is not None:
+            pct_app = float(cbs["pctAppartementen"])
+            if pct_app > 50:
+                woning_type = "voornamelijk appartementen"
+            elif pct_app > 25:
+                woning_type = "veel appartementen"
+            else:
+                woning_type = "voornamelijk eengezinswoningen"
+            summary_lines.append(f"Woontype: {woning_type} ({pct_app:.1f}% appartementen).")
+
+        # Voorzieningen afstanden
+        if "amenities" in cbs and cbs["amenities"]:
+            amenities = cbs["amenities"]
+            voorzieningen = []
+
+            if "supermarket_km" in amenities and amenities["supermarket_km"] is not None:
+                km = float(amenities["supermarket_km"])
+                if km < 0.5:
+                    voorzieningen.append("zeer dichtbij supermarkt")
+                elif km < 1:
+                    voorzieningen.append("dichtbij supermarkt")
+                else:
+                    voorzieningen.append(f"supermarkt op {km:.1f}km")
+
+            if "huisarts_km" in amenities and amenities["huisarts_km"] is not None:
+                km = float(amenities["huisarts_km"])
+                if km < 0.5:
+                    voorzieningen.append("zeer dichtbij huisarts")
+                elif km < 1:
+                    voorzieningen.append("dichtbij huisarts")
+                else:
+                    voorzieningen.append(f"huisarts op {km:.1f}km")
+
+            if voorzieningen:
+                summary_lines.append(f"Voorzieningen: {', '.join(voorzieningen)}.")
+
+        # Auto bezit
+        if "carsPerHousehold" in cbs and cbs["carsPerHousehold"] is not None:
+            cars = float(cbs["carsPerHousehold"])
+            if cars < 0.8:
+                mobiliteit = "relatief lage autobezit"
+            elif cars > 1.2:
+                mobiliteit = "hoge autobezit"
+            else:
+                mobiliteit = "gemiddelde autobezit"
+            summary_lines.append(f"Auto's per huishouden: {cars:.1f} ({mobiliteit}).")
+
+    # 3) Geometrie / oppervlakte / centroid (optioneel)
     if "geometry" in data and data["geometry"]:
         print("[ANALYSE] Geometry key present, attempting GeoPandas analysis...")
         try:
@@ -518,13 +583,16 @@ uitleg voor iemand die overweegt in de buurt "{buurt_naam}" te wonen.
 
 BELANGRIJK CONTEXT:
 - Dit verhaal gaat SPECIFIEK over de buurt "{buurt_naam}" in {gemeente_naam}
-- De data bevat gedetailleerde criminaliteitscijfers:
-  * Gewelds- en seksuele misdrijven per 1.000 inwoners
-  * Vermogensmisdrijven (inbraak/diefstal woning) per 1.000 inwoners
+- Uitgebreide leefbaarheidsdata beschikbaar:
+  * Criminaliteit: gewelds- en vermogensmisdrijven per 1.000 inwoners
+  * Voorzieningen: afstanden tot supermarkt, huisarts, school, kinderdagverblijf
+  * Woningtypes: percentage appartementen vs eengezinswoningen
+  * Stedelijkheid: mate van stedelijkheid (1-5 schaal)
+  * Mobiliteit: autobezit per huishouden
 - Plus machine learning informatie:
   * Cluster classificatie (buurt type gebaseerd op socio-demografische data)
   * Vergelijkbare buurten gevonden via KNN algoritme
-- Gebruik alle veiligheids- en leefbaarheidsinzichten om de buurtbeschrijving te verrijken.
+- Gebruik alle veiligheids-, leefbaarheids- en voorzieningengegevens voor een compleet buurtbeeld.
 
 Regels:
 - Schrijf in het Nederlands.
