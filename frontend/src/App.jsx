@@ -1140,7 +1140,7 @@ export default function App() {
         .map((n) => ({
           x: n.pca_x,
           y: n.pca_y,
-          name: `${n.buurt_code} – ${n.gemeente}`,
+          name: `${getBuurtNaam(n.buurt_code) || n.naam || n.buurt_code} – ${n.gemeente}`,
           cluster: n.cluster_label_short,
         })) || [];
 
@@ -1891,7 +1891,7 @@ export default function App() {
                               </span>
                               <div className="similar-main">
                                 <div className="similar-title">
-                                  {b.naam || b.buurt_code} – {b.gemeente}
+                                  {getBuurtNaam(b.buurt_code) || b.naam || b.buurt_code} – {b.gemeente}
                                 </div>
                                 <div className="small">
                                   {capitalizeFirst(b.cluster_label_short)} •{" "}
