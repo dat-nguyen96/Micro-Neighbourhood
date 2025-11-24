@@ -8,10 +8,11 @@ export default function AddressSearchBar({ onSelect, loading }) {
   const [suggestions, setSuggestions] = useState([]);
   const [activeIndex, setActiveIndex] = useState(-1);
   const [open, setOpen] = useState(false);
+  const [buurtNames, setBuurtNames] = useState(new Map());
 
   const boxRef = useRef(null);
 
-  // --- Fetch suggestions ---
+  // --- Fetch suggestions with buurt names ---
   useEffect(() => {
     if (!query || query.trim().length < 2) {
       setSuggestions([]);
@@ -31,19 +32,62 @@ export default function AddressSearchBar({ onSelect, loading }) {
         const json = await resp.json();
         const docs = json.response?.docs || [];
 
-        setSuggestions(docs);
+        // Enrich each suggestion with buurt info
+        const enrichedDocs = await Promise.all(
+          docs.map(async (doc) => {
+            try {
+              // Get full address details to find buurt code
+              const freeResp = await fetch(
+                `https://api.pdok.nl/bzk/locatieserver/search/v3_1/free?q=${encodeURIComponent(doc.weergavenaam)}&rows=1&fq=type:adres`,
+                { signal: controller.signal }
+              );
+              if (!freeResp.ok) return doc;
+
+              const freeJson = await freeResp.json();
+              const freeDocs = freeJson.response?.docs || [];
+              if (freeDocs.length === 0) return doc;
+
+              const freeDoc = freeDocs[0];
+              const buurtCode = freeDoc.buurtcode || freeDoc.wijkcode || freeDoc.gemeentecode;
+
+              if (buurtCode) {
+                // Check cache first
+                if (buurtNames.has(buurtCode)) {
+                  return { ...doc, _buurtNaam: buurtNames.get(buurtCode), _buurtCode: buurtCode };
+                }
+
+                // Fetch buurt info
+                const clusterResp = await fetch(`/api/buurt-cluster?buurt_code=${encodeURIComponent(buurtCode)}`);
+                if (clusterResp.ok) {
+                  const clusterInfo = await clusterResp.json();
+                  const buurtNaam = clusterInfo.buurt_naam;
+
+                  // Update cache
+                  setBuurtNames(prev => new Map(prev).set(buurtCode, buurtNaam));
+
+                  return { ...doc, _buurtNaam: buurtNaam, _buurtCode: buurtCode };
+                }
+              }
+            } catch (e) {
+              // ignore errors, just return doc without buurt info
+            }
+            return doc;
+          })
+        );
+
+        setSuggestions(enrichedDocs);
         setOpen(true);
         setActiveIndex(-1);
       } catch (e) {
         // ignore abort
       }
-    }, 200); // debounce 200–250ms
+    }, 300); // debounce 300ms for API calls
 
     return () => {
       clearTimeout(timeout);
       controller.abort();
     };
-  }, [query]);
+  }, [query, buurtNames]);
 
   // --- Close dropdown when clicking outside ---
   useEffect(() => {
@@ -123,6 +167,9 @@ export default function AddressSearchBar({ onSelect, loading }) {
                 {s.postcode && (
                   <span className="extra"> • {s.postcode}</span>
                 )}
+                {s._buurtNaam && (
+                  <div className="buurt-label">{s._buurtNaam}</div>
+                )}
               </div>
             );
           })}
@@ -161,6 +208,12 @@ export default function AddressSearchBar({ onSelect, loading }) {
           color: #64748b;
           margin-left: 6px;
           font-size: 0.8rem;
+        }
+        .dropdown-item .buurt-label {
+          color: #3b82f6;
+          font-size: 0.75rem;
+          font-weight: 500;
+          margin-top: 2px;
         }
       `}</style>
     </div>
