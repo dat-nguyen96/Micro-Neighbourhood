@@ -1427,6 +1427,32 @@ export default function App() {
                         </div>
                       )}
 
+                      {result.cbsStats?.amenities?.school_km != null && (
+                        <div className="stat-card">
+                          <div className="stat-label">Afstand school</div>
+                          <div className="stat-value">
+                            {formatOrNA(result.cbsStats.amenities.school_km, nf1)}
+                            <span className="small"> km</span>
+                          </div>
+                          <div className="stat-help">
+                            Gemiddelde afstand tot dichtstbijzijnde school.
+                          </div>
+                        </div>
+                      )}
+
+                      {result.cbsStats?.amenities?.kinderdagverblijf_km != null && (
+                        <div className="stat-card">
+                          <div className="stat-label">Afstand kinderdagverblijf</div>
+                          <div className="stat-value">
+                            {formatOrNA(result.cbsStats.amenities.kinderdagverblijf_km, nf1)}
+                            <span className="small"> km</span>
+                          </div>
+                          <div className="stat-help">
+                            Gemiddelde afstand tot dichtstbijzijnde kinderdagverblijf.
+                          </div>
+                        </div>
+                      )}
+
                       {result.cbsStats?.stedelijkheid != null && (
                         <div className="stat-card">
                           <div className="stat-label">Mate van stedelijkheid</div>
