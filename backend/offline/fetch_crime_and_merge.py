@@ -3,32 +3,40 @@
 import requests
 import pandas as pd
 from pathlib import Path
-from typing import Union
+from typing import Union, Optional
 
 
 def fetch_crime_raw_to_csv(
     table_id: str = "47018NED",
     outfile: Union[Path, str] = "data/cbs_crime_raw.csv",
-    batch_size: int = 1000,
+    year_filter: str = "2024JJ00",  # Filter op specifiek jaar
+    max_rows: Optional[int] = None,   # optioneel: harde limiet
 ):
     """
-    Haal alle rijen van de Politie/CBS-tabel (default: 47018NED)
-    batch-gewijs op en schrijf naar een ruwe CSV.
+    Haal alle rijen van de Politie/CBS-tabel (default: 47018NED) voor een specifiek jaar
+    via ODataApi met $filter, $top en $skip paginatie.
+
+    Dit is robuuster dan zelf nextLink volgen.
     """
     base_url = f"https://dataderden.cbs.nl/ODataApi/OData/{table_id}/TypedDataSet"
     outfile = Path(outfile)
     outfile.parent.mkdir(parents=True, exist_ok=True)
 
-    print(f"Fetching CBS {table_id} to CSV with pagination...")
+    print(f"Fetching CBS {table_id} for year {year_filter}...")
     print(f"Base URL: {base_url}")
 
-    all_rows = []
+    all_rows: list[dict] = []
     skip = 0
-    total_fetched = 0
+    batch_size = 1000  # Blijf onder de 10k limiet
+    batch_count = 0
 
     while True:
-        url = f"{base_url}?$top={batch_size}&$skip={skip}"
-        print(f"Requesting batch: $skip={skip}, $top={batch_size}")
+        batch_count += 1
+
+        # Bouw URL met filter, top en skip
+        filter_param = f"Perioden eq '{year_filter}'"
+        url = f"{base_url}?$filter={filter_param}&$top={batch_size}&$skip={skip}"
+        print(f"Requesting batch {batch_count}: $skip={skip}, $top={batch_size}")
 
         resp = requests.get(url)
         if not resp.ok:
@@ -45,14 +53,25 @@ def fetch_crime_raw_to_csv(
             break
 
         all_rows.extend(rows)
-        total_fetched += batch_len
-        skip += batch_len  # veilig: sommige tabellen geven minder dan batch_size terug
+
+        # Optionele harde limiet op aantal rijen
+        if max_rows is not None and len(all_rows) >= max_rows:
+            print(f"max_rows={max_rows} bereikt; stoppen met ophalen.")
+            all_rows = all_rows[:max_rows]
+            break
+
+        # Controleer of we minder rijen kregen dan gevraagd - laatste batch
+        if batch_len < batch_size:
+            print(f"Laatste batch: {batch_len} rijen (minder dan {batch_size}).")
+            break
+
+        skip += batch_size
 
     if not all_rows:
         print("Geen data opgehaald; CSV wordt niet geschreven.")
         return
 
-    print(f"Totaal opgehaald: {total_fetched} rijen. Schrijf naar CSV...")
+    print(f"Totaal opgehaald: {len(all_rows)} rijen. Schrijf naar CSV...")
 
     df = pd.DataFrame(all_rows)
     outfile.parent.mkdir(parents=True, exist_ok=True)
@@ -66,7 +85,7 @@ def prepare_crime_year_for_buurten(
     outfile: Union[Path, str, None] = None,
 ) -> Path:
     """
-    Neem de ruwe 47018NED CSV, filter op jaar + buurten,
+    Lees de ruwe CBS crime data, filter op gegeven jaar en BU-wijken,
     aggregeer naar 1 rij per buurt en schrijf naar CSV.
 
     Let op: omdat we de kolomnamen van 47018NED hier niet hard-coden,
@@ -80,6 +99,7 @@ def prepare_crime_year_for_buurten(
     outfile = Path(outfile)
 
     print(f"Lees ruwe crime-data uit {raw_csv}...")
+
     df = pd.read_csv(raw_csv)
 
     # alleen gekozen jaar
@@ -120,30 +140,23 @@ def prepare_crime_year_for_buurten(
 
 
 def merge_clusters_with_crime(
-    clusters_csv: Union[Path, str] = "backend/data/buurten_features_clusters.csv",
-    crime_buurten_csv: Union[Path, str] = "data/cbs_crime_2024_buurten.csv",
+    clusters_csv: Union[Path, str],
+    crime_buurten_csv: Union[Path, str],
     outfile: Union[Path, str, None] = None,
 ) -> Path:
     """
-    Merge de bestaande buurt-features/cluster-CSV met de geaggregeerde
-    criminaliteitsdata per buurt.
-
-    Resultaat: zelfde aantal rijen als clusters_csv,
-    met extra kolommen uit de crime-CSV (left join).
+    Merge de clusters+features CSV met de geaggregeerde crime data per buurt.
     """
     clusters_csv = Path(clusters_csv)
     crime_buurten_csv = Path(crime_buurten_csv)
-
     if outfile is None:
-        outfile = clusters_csv.with_name(
-            clusters_csv.stem + "_with_crime" + clusters_csv.suffix
-        )
+        outfile = clusters_csv.parent / f"{clusters_csv.stem}_with_crime_{crime_buurten_csv.stem.split('_')[-1]}.csv"
     outfile = Path(outfile)
 
-    print(f"Lees clusters uit: {clusters_csv}")
+    print(f"Lees clusters uit {clusters_csv}...")
     clusters = pd.read_csv(clusters_csv)
 
-    print(f"Lees crime-data per buurt uit: {crime_buurten_csv}")
+    print(f"Lees crime data uit {crime_buurten_csv}...")
     crime = pd.read_csv(crime_buurten_csv)
 
     if "WijkenEnBuurten" not in clusters.columns:
@@ -165,24 +178,27 @@ def merge_clusters_with_crime(
 
 if __name__ == "__main__":
     # 1) Ruwe 47018NED ophalen (eenmalig, of af en toe verversen)
-    # Start with smaller batch size for testing
+    print("=== STARTING CRIME DATA FETCH (2024 only) ===")
+    year_filter = "2024JJ00"
     fetch_crime_raw_to_csv(
         table_id="47018NED",
-        outfile="data/cbs_crime_raw.csv",
-        batch_size=1000,
+        outfile="../data/cbs_crime_raw.csv",
+        year_filter=year_filter,
+        max_rows=None,  # Haal alle beschikbare 2024 data op
     )
+    print("=== CRIME DATA FETCH COMPLETE ===")
 
-    # 2) Specifiek jaar klaarzetten – 2024 is het laatste beschikbare jaar
-    year = "2024JJ00"  # CBS format voor jaar 2024
+    # 2) Data per buurt aggregeren (alleen 2024 data is al gefilterd)
+    year = "2024JJ00"
     crime_year_csv = prepare_crime_year_for_buurten(
         year=year,
         raw_csv="data/cbs_crime_raw.csv",
-        outfile=f"data/cbs_crime_{year}_buurten.csv",
+        outfile=f"../data/cbs_crime_{year}_buurten.csv",
     )
 
     # 3) Merge met jouw bestaande features + clusters
     merge_clusters_with_crime(
-        clusters_csv="backend/data/buurten_features_clusters.csv",
+        clusters_csv="../data/buurten_features_clusters.csv",
         crime_buurten_csv=crime_year_csv,
-        outfile=f"backend/data/buurten_features_clusters_with_crime_{year}.csv",
+        outfile=f"../data/buurten_features_clusters_with_crime_{year}.csv",
     )

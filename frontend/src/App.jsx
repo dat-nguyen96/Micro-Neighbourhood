@@ -125,10 +125,52 @@ export default function App() {
 
   const [similarBuurten, setSimilarBuurten] = useState(null); // { base_buurt_code, neighbours: [...] }
   const [clusterInfo, setClusterInfo] = useState(null); // { buurt_code, cluster, label, label_long }
+  const [buurtNamen, setBuurtNamen] = useState(new Map()); // Map<buurtCode, buurtNaam>
   const [mlLoading, setMlLoading] = useState(false);
 
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
+
+  // Load buurt namen on startup
+  useEffect(() => {
+    fetch("/data/cbs_buurt_namen_83765.csv")
+      .then((resp) => resp.text())
+      .then((csvText) => {
+        const lines = csvText.trim().split("\n");
+        if (lines.length === 0) return;
+
+        const header = lines[0].split(",");
+        const identifierIdx = header.indexOf("Identifier");
+        const titleIdx = header.indexOf("Title");
+
+        if (identifierIdx === -1 || titleIdx === -1) {
+          console.warn("Buurt namen CSV heeft niet de verwachte kolommen");
+          return;
+        }
+
+        const namenMap = new Map();
+        for (let i = 1; i < lines.length; i++) {
+          const cols = lines[i].split(",");
+          const buurtCode = cols[identifierIdx]?.replace(/"/g, "").trim();
+          const buurtNaam = cols[titleIdx]?.replace(/"/g, "").trim();
+          if (buurtCode && buurtNaam) {
+            namenMap.set(buurtCode, buurtNaam);
+          }
+        }
+
+        setBuurtNamen(namenMap);
+        console.log(`Geladen: ${namenMap.size} buurt namen`);
+      })
+      .catch((err) => {
+        console.warn("Kon buurt namen niet laden:", err);
+      });
+  }, []);
+
+  // Helper: get buurt naam from code
+  function getBuurtNaam(buurtCode) {
+    if (!buurtCode) return null;
+    return buurtNamen.get(buurtCode.trim()) || null;
+  }
 
   async function handleSearch(e) {
     e.preventDefault();
@@ -241,6 +283,7 @@ export default function App() {
 
             const population = pick(row, "AantalInwoners_5");
             const density = pick(row, "Bevolkingsdichtheid_33");
+            const gemeenteNaam = pick(row, "Gemeentenaam_1");
 
             // Leeftijdsgroepen (absolute aantallen)
             const ageGroups = {
@@ -300,6 +343,7 @@ export default function App() {
 
             cbsStats = {
               buurtCode,
+              gemeenteNaam,
               population,
               density,
               pct65Plus,
@@ -352,13 +396,34 @@ export default function App() {
 
   function buildAiData() {
     if (!result) return null;
+
+    console.log("buildAiData - clusterInfo:", clusterInfo);
+    console.log("buildAiData - result.cbsStats:", result.cbsStats);
+    console.log("buildAiData - gemeenteNaam:", result.cbsStats?.gemeenteNaam);
+
+    // Zorg altijd voor buurt naam in clusterInfo
+    let enrichedClusterInfo = clusterInfo ? { ...clusterInfo } : null;
+    if (!enrichedClusterInfo && result.cbsStats?.buurtCode) {
+      // Fallback: maak basic clusterInfo met buurt naam
+      const buurtNaam = getBuurtNaam(result.cbsStats.buurtCode);
+      enrichedClusterInfo = {
+        buurt_code: result.cbsStats.buurtCode,
+        buurt_naam: buurtNaam || result.cbsStats.buurtCode,
+      };
+      console.log("buildAiData - created fallback clusterInfo:", enrichedClusterInfo);
+    } else if (enrichedClusterInfo && !enrichedClusterInfo.buurt_naam && result.cbsStats?.buurtCode) {
+      // Voeg buurt naam toe aan bestaande clusterInfo
+      enrichedClusterInfo.buurt_naam = getBuurtNaam(result.cbsStats.buurtCode) || result.cbsStats.buurtCode;
+      console.log("buildAiData - enriched clusterInfo:", enrichedClusterInfo);
+    }
+
     return {
       address: result.address,
       coords: result.coords,
       buildingInfo: result.buildingInfo,
       cbsStats: result.cbsStats,
       geometry: result.geometry,
-      clusterInfo: clusterInfo,
+      clusterInfo: enrichedClusterInfo,
       similarBuurten: similarBuurten,
       crimeData: result.crimeData,
     };
@@ -816,7 +881,7 @@ export default function App() {
                 <span className="badge primary-badge">{result.address}</span>
                 {result.cbsStats?.buurtCode && (
                   <span className="badge">
-                    CBS buurtcode: {result.cbsStats.buurtCode.trim()}
+                    Buurt: {getBuurtNaam(result.cbsStats.buurtCode) || result.cbsStats.buurtCode.trim()}
                   </span>
                 )}
                 {clusterInfo && (

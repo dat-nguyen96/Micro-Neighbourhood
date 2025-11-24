@@ -144,6 +144,7 @@ class SimilarBuurtenResponse(BaseModel):
 
 class ClusterInfoResponse(BaseModel):
     buurt_code: str
+    buurt_naam: str     # echte buurt naam
     cluster: int
     label: str          # korte label (voor badge)
     label_long: str     # lange uitleg (voor panel)
@@ -163,6 +164,58 @@ def analyse_neighbourhood_data(data: Dict[str, Any]) -> Tuple[str, Dict[str, Opt
 
     summary_lines: list[str] = []
     metrics: Dict[str, Optional[float]] = {"area_ha": None}
+
+    # 0) Buurt identificatie
+    if "address" in data and data["address"]:
+        summary_lines.append(f"Locatie: {data['address']}")
+
+    # Probeer buurt naam en gemeente te vinden
+    buurt_naam = None
+    gemeente_naam = None
+
+    if "clusterInfo" in data and data["clusterInfo"] and "buurt_naam" in data["clusterInfo"]:
+        buurt_naam = data["clusterInfo"]["buurt_naam"]
+        print(f"[ANALYSE] Buurt naam gevonden in clusterInfo: {buurt_naam}")
+
+    if "cbsStats" in data and data["cbsStats"]:
+        # Gebruik gemeente naam uit cbsStats als deze beschikbaar is
+        if "gemeenteNaam" in data["cbsStats"] and data["cbsStats"]["gemeenteNaam"]:
+            gemeente_naam = str(data["cbsStats"]["gemeenteNaam"]).strip()
+            print(f"[ANALYSE] Gemeente naam gevonden in cbsStats: {gemeente_naam}")
+
+        # Zoek buurt naam en gemeente in onze data als fallback
+        if "buurtCode" in data["cbsStats"]:
+            buurt_code = data["cbsStats"]["buurtCode"]
+            try:
+                _ensure_cbs_data_loaded()
+                if CBS_DF is not None:
+                    matches = CBS_DF[CBS_DF["WijkenEnBuurten"].str.strip() == buurt_code.strip()]
+                    if not matches.empty:
+                        row = matches.iloc[0]
+                        # Gebruik buurt naam uit clusterInfo, of fallback naar CBS data
+                        if not buurt_naam:
+                            buurt_naam = str(row.get("buurt_naam", "")).strip()
+                            if buurt_naam:
+                                print(f"[ANALYSE] Buurt naam gevonden in CBS data: {buurt_naam}")
+
+                        # Gebruik gemeente naam uit cbsStats, of fallback naar CBS data
+                        if not gemeente_naam:
+                            gemeente_naam = str(row.get("Gemeentenaam_1", "")).strip()
+                            if gemeente_naam:
+                                print(f"[ANALYSE] Gemeente naam gevonden in CBS data: {gemeente_naam}")
+            except Exception as e:
+                print(f"[ANALYSE] Error looking up buurt/gemeente data: {e}")
+
+    if buurt_naam:
+        summary_lines.append(f"Buurt naam: {buurt_naam}")
+    else:
+        print(f"[ANALYSE] Buurt naam NIET gevonden")
+
+    if gemeente_naam:
+        summary_lines.append(f"Gemeente: {gemeente_naam}")
+
+    if "cbsStats" in data and data["cbsStats"] and "buurtCode" in data["cbsStats"]:
+        summary_lines.append(f"CBS buurtcode: {data['cbsStats']['buurtCode']}")
 
     # 1) Numerieke indicatoren
     numeric_cols = df.select_dtypes(include="number").columns.tolist()
@@ -396,28 +449,46 @@ async def neighbourhood_story(req: NeighbourhoodStoryRequest):
 
     persona = req.persona or "algemeen huishouden"
 
+    print("[API] clusterInfo in data:", req.data.get("clusterInfo"))
+    print("[API] cbsStats in data:", req.data.get("cbsStats"))
     analysis_summary, metrics = analyse_neighbourhood_data(req.data)
+
+    # Extract gemeente en buurt naam voor duidelijke instructies
+    gemeente_naam = "Nederland"  # fallback
+    buurt_naam = "deze buurt"    # fallback
+
+    if "cbsStats" in req.data and req.data["cbsStats"] and "gemeenteNaam" in req.data["cbsStats"]:
+        gemeente_naam = req.data["cbsStats"]["gemeenteNaam"]
+    if "clusterInfo" in req.data and req.data["clusterInfo"] and "buurt_naam" in req.data["clusterInfo"]:
+        buurt_naam = req.data["clusterInfo"]["buurt_naam"]
+
+    print(f"[API] AI story voor buurt '{buurt_naam}' in gemeente '{gemeente_naam}'")
 
     prompt = f"""
 Acteer als een neutrale Nederlandse buurtuitlegger.
 
-Je krijgt gestructureerde data over één klein gebied in Nederland
-(en eventueel een persona) en je schrijft een korte, vriendelijke
-uitleg voor iemand die overweegt daar te wonen.
+Je gaat een verhaal schrijven over de buurt "{buurt_naam}" in de gemeente {gemeente_naam}.
 
-BELANGRIJK: De data bevat ook machine learning informatie zoals:
-- Cluster classificatie (buurt type gebaseerd op socio-demografische data)
-- Criminaliteitsgegevens (geregistreerde misdrijven per buurt)
-- Vergelijkbare buurten gevonden via KNN algoritme
-Gebruik deze ML-inzichten om de buurtbeschrijving te verrijken met context over veiligheid, leefbaarheid en hoe deze buurt zich verhoudt tot andere Nederlandse buurten.
+Je krijgt gestructureerde data over deze specifieke buurt in {gemeente_naam}
+(en eventueel een persona) en je schrijft een korte, vriendelijke
+uitleg voor iemand die overweegt in de buurt "{buurt_naam}" te wonen.
+
+BELANGRIJK CONTEXT:
+- Dit verhaal gaat SPECIFIEK over de buurt "{buurt_naam}" in {gemeente_naam}
+- De data bevat ook machine learning informatie zoals:
+  * Cluster classificatie (buurt type gebaseerd op socio-demografische data)
+  * Criminaliteitsgegevens (geregistreerde misdrijven per buurt)
+  * Vergelijkbare buurten gevonden via KNN algoritme
+- Gebruik deze ML-inzichten om de buurtbeschrijving te verrijken met context over veiligheid, leefbaarheid en hoe deze buurt zich verhoudt tot andere Nederlandse buurten.
 
 Regels:
 - Schrijf in het Nederlands.
 - Maximaal 5 korte alinea's.
+- Begin altijd met de naam van de buurt "{buurt_naam}" in de gemeente {gemeente_naam}.
 - Geen juridisch, financieel of veiligheidsadvies.
 - Wees beschrijvend maar neutraal.
 - Focus op vibe: druk/rustig, jong/oud, voorzieningen, woningtype.
-- Gebruik de cluster informatie om bredere context te geven over het buurtkarakter.
+- Gebruik de cluster informatie om bredere context te geven over het buurtkarakter van "{buurt_naam}".
 
 Persona van de lezer: {persona}
 
@@ -428,12 +499,12 @@ Samenvatting van de ruwe buurtdata (uit een pandas/geopandas-analyse inclusief M
 Originele data (JSON):
 {req.data}
 
-Schrijf nu:
+Schrijf nu over de buurt "{buurt_naam}" in {gemeente_naam}:
 
-1) Een titel van max 60 tekens.
-2) Een korte samenvattende intro (1–2 zinnen) die het buurtkarakter benadrukt.
-3) Kopje "Pluspunten" met 3 bullets.
-4) Kopje "Let op" met 3 bullets.
+1) Een titel van max 60 tekens die "{buurt_naam}" vermeldt.
+2) Een korte samenvattende intro (1–2 zinnen) die het karakter van "{buurt_naam}" benadrukt.
+3) Kopje "Pluspunten" met 3 bullets over wonen in "{buurt_naam}".
+4) Kopje "Let op" met 3 bullets over wonen in "{buurt_naam}".
 """
 
     try:
@@ -483,7 +554,7 @@ async def similar_buurten(
         neighbours.append(
             SimilarBuurt(
                 buurt_code=str(row["WijkenEnBuurten"]).strip(),
-                naam=str(row.get("Codering_3", "")).strip()
+                naam=str(row.get("buurt_naam", "")).strip()
                 or str(row["WijkenEnBuurten"]).strip(),
                 gemeente=str(row["Gemeentenaam_1"]).strip(),
                 distance=float(dist),
@@ -532,6 +603,7 @@ async def buurt_cluster(
 
     return ClusterInfoResponse(
         buurt_code=buurt_code.strip(),
+        buurt_naam=str(row.get("buurt_naam", buurt_code.strip())),
         cluster=cluster_id,
         label=cluster_info["label_short"],
         label_long=cluster_info["label_long"],
