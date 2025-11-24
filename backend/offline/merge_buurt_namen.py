@@ -10,8 +10,8 @@ def merge_buurt_namen():
     """Voeg buurt namen toe aan de bestaande data"""
 
     # Lees bestaande data
-    buurten_file = Path("../data/buurten_features_clusters_with_crime_2024.csv")
-    namen_file = Path("../data/cbs_buurt_namen_83765.csv")
+    buurten_file = Path("../data/buurten_features_clusters.csv")
+    namen_file = Path("../data/cbs_buurt_namen_85984.csv")
 
     print(f"Lees buurten data: {buurten_file}")
     buurten_df = pd.read_csv(buurten_file)
@@ -64,7 +64,7 @@ def merge_buurt_namen():
         pass
 
     # Schrijf terug naar dezelfde file
-    output_file = Path("../data/buurten_features_clusters_with_crime_2024.csv")
+    output_file = Path("../data/buurten_features_clusters_with_crime_2024.csv")  # Keep same name for compatibility
     merged_df.to_csv(output_file, index=False)
 
     print(f"✅ Merged data geschreven naar: {output_file}")

@@ -5,7 +5,7 @@ from pathlib import Path
 
 def prepare_crime_year_for_buurten(
     year: str,
-    crime_csv: str = "data/cbs_crime_test.csv",
+    crime_csv: str = "data/cbs_crime_2024JJ00_buurten.csv",
     outfile: str = None,
 ):
     """Process crime data for a specific year and aggregate by neighborhood"""

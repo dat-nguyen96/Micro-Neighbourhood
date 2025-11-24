@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Haal alle buurtcodes + namen op van CBS 83765NED
+Haal alle buurtcodes + namen op van CBS 85984NED
 """
 import requests
 import pandas as pd
@@ -9,12 +9,12 @@ from typing import Union, Optional
 
 
 def fetch_buurt_namen_to_csv(
-    table_id: str = "83765NED",
-    outfile: Union[str, Path] = "../data/cbs_buurt_namen_83765.csv",
+    table_id: str = "85984NED",
+    outfile: Union[str, Path] = "../data/cbs_buurt_namen_85984.csv",
     max_rows: Optional[int] = None,  # Test: beperk aantal rijen
 ):
     """
-    Haal alle codes + namen van WijkenEnBuurten op voor 83765NED via OData v4
+    Haal alle codes + namen van WijkenEnBuurten op voor 85984NED via OData v4
     en schrijf naar CSV met kolommen:
       - Identifier  (bijv. BU04053306)
       - Title       (buurtnaam)

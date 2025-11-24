@@ -47,16 +47,19 @@ CLUSTERS_CSV = DATA_DIR / "buurten_features_clusters_with_crime_2024.csv"
 
 FEATURE_COLUMNS = [
     "AantalInwoners_5",
-    "Bevolkingsdichtheid_33",
-    "GemiddeldeHuishoudensgrootte_32",
-    "GemiddeldInkomenPerInwoner_66",
-    "HuishoudensMetKinderen_31",
-    "HuishoudensTotaal_28",
-    "HuishOnderOfRondSociaalMinimum_73",
-    "MateVanStedelijkheid_104",
+    "Bevolkingsdichtheid_34",
+    "GemiddeldeHuishoudensgrootte_33",
+    # "GemiddeldInkomenPerInwoner_78",  # Not available in 85984NED dataset
+    "HuishoudensMetKinderen_32",
+    "HuishoudensTotaal_29",
+    # "HuishOnderOfRondSociaalMinimum_85",  # Not available in 85984NED dataset
+    "MateVanStedelijkheid_122",
     "k_0Tot15Jaar_8",
     "k_25Tot45Jaar_10",
     "k_65JaarOfOuder_12",
+    "crime_property",    # Vermogensmisdrijven (diefstal)
+    "crime_violence",    # Geweldsmisdrijven
+    "crime_vandalism",   # Vernieling/openbare orde
 ]
 
 # Globale in-memory data (lazy geladen uit CSV)
@@ -361,7 +364,7 @@ def analyse_neighbourhood_data(data: Dict[str, Any]) -> Tuple[str, Dict[str, Opt
                 safety = "hoger criminaliteitsniveau"
             summary_lines.append(f"- Misdaad per 1000 inwoners: {rate:.1f} ({safety})")
 
-    # Gedetailleerde criminaliteitscijfers uit CBS 83765NED
+    # Gedetailleerde criminaliteitscijfers uit CBS 85984NED
     if "cbsStats" in data and data["cbsStats"]:
         cbs_stats = data["cbsStats"]
         detailed_crime = []

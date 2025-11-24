@@ -19,7 +19,7 @@ BASE_DIR = Path(__file__).resolve().parents[1]  # backend/
 DATA_DIR = BASE_DIR / "data"
 DATA_DIR.mkdir(exist_ok=True)
 
-RAW_CSV = DATA_DIR / "cbs_buurten_raw.csv"
+RAW_CSV = DATA_DIR / "buurten_features_raw_with_detailed_crime_2024.csv"
 OUT_CSV = DATA_DIR / "buurten_features_clusters.csv"
 
 # ---- Env / OpenAI ----
@@ -33,32 +33,31 @@ client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
 FEATURE_COLUMNS: List[str] = [
     "AantalInwoners_5",
-    "Bevolkingsdichtheid_33",
-    "GemiddeldeHuishoudensgrootte_32",
-    "GemiddeldInkomenPerInwoner_66",
-    "HuishoudensMetKinderen_31",
-    "HuishoudensTotaal_28",
-    "HuishOnderOfRondSociaalMinimum_73",
-    "MateVanStedelijkheid_104",
+    "Bevolkingsdichtheid_34",
+    "GemiddeldeHuishoudensgrootte_33",
+    # "GemiddeldInkomenPerInwoner_78",  # Not available in 85984NED dataset
+    "HuishoudensMetKinderen_32",
+    "HuishoudensTotaal_29",
+    # "HuishOnderOfRondSociaalMinimum_85",  # Not available in 85984NED dataset
+    "MateVanStedelijkheid_122",
     "k_0Tot15Jaar_8",
     "k_15Tot25Jaar_9",
     "k_25Tot45Jaar_10",
     "k_45Tot65Jaar_11",
     "k_65JaarOfOuder_12",
-    # Nieuwe criminaliteitsfeatures
-    "TotaalDiefstalUitWoningSchuurED_106",  # Vermogensmisdrijven (diefstal woning)
-    "VernielingMisdrijfTegenOpenbareOrde_107",  # Vernieling/openbare orde
-    "GeweldsEnSeksueleMisdrijven_108",  # Geweld/seksuele misdrijven
+    "crime_property",    # Vermogensmisdrijven
+    "crime_violence",    # Geweldsmisdrijven
+    "crime_vandalism",   # Vernieling/openbare orde
 ]
 
 # ---- CBS fetch helper (eenmalig offline) ----
 
 def fetch_cbs_to_csv():
   """
-  Haal CBS 83765NED (alle buurten) op en schrijf naar cbs_buurten_raw.csv.
+  Haal CBS 85984NED (alle buurten) op en schrijf naar cbs_buurten_raw.csv.
   """
-  print("Fetching CBS 83765NED to CSV with pagination...")
-  base_url = "https://opendata.cbs.nl/ODataApi/OData/83765NED/TypedDataSet"
+  print("Fetching CBS 85984NED to CSV with pagination...")
+  base_url = "https://opendata.cbs.nl/ODataApi/OData/85984NED/TypedDataSet"
   all_data = []
   skip = 0
   batch_size = 1000
@@ -261,5 +260,72 @@ def main():
     print(f"Wrote {len(out_df)} rows to {OUT_CSV}")
 
 
+def recluster_existing_data():
+    """Re-cluster existing data with updated features"""
+    print(f"Loading existing data from {RAW_CSV} ...")
+    df = pd.read_csv(RAW_CSV)
+
+    print(f"Data shape: {df.shape}")
+    print(f"Columns: {list(df.columns)}")
+
+    missing = [c for c in FEATURE_COLUMNS if c not in df.columns]
+    if missing:
+        raise RuntimeError(f"Missing feature columns in CSV: {missing}")
+
+    df_features = df[FEATURE_COLUMNS].copy()
+    mask = df_features.notna().all(axis=1)
+    df_clean = df[mask].reset_index(drop=True)
+    df_features = df_features[mask].reset_index(drop=True)
+
+    print(f"Rows before cleaning: {len(df)}, after: {len(df_clean)}")
+
+    from sklearn.preprocessing import StandardScaler
+    from sklearn.cluster import KMeans
+    from sklearn.decomposition import PCA
+
+    scaler = StandardScaler()
+    X = scaler.fit_transform(df_features)
+
+    # KMeans - meer clusters voor betere leeftijdsscheiding
+    n_clusters = 12
+    print(f"Fitting KMeans with k={n_clusters} ...")
+    km = KMeans(n_clusters=n_clusters, random_state=42, n_init="auto")
+    clusters = km.fit_predict(X)
+
+    # PCA voor visualisatie
+    print("Computing PCA(2) for visualisation ...")
+    pca = PCA(n_components=2, random_state=42)
+    X_pca = pca.fit_transform(X)
+
+    # Labels genereren voor elk cluster
+    cluster_labels_short = {}
+    cluster_labels_long = {}
+
+    for cluster_id in range(n_clusters):
+        print(f"Generating label for cluster {cluster_id} (rows={sum(clusters == cluster_id)}) ...")
+        cluster_mask = clusters == cluster_id
+        cluster_data = df_features[cluster_mask]
+
+        prompt = summarize_cluster_for_prompt(cluster_data)
+        label_short, label_long = parse_label_response(prompt, cluster_id)
+
+        cluster_labels_short[cluster_id] = label_short
+        cluster_labels_long[cluster_id] = label_long
+
+    # Output DataFrame maken
+    out_df = df_clean.copy()
+    out_df["cluster_id"] = clusters
+    out_df["cluster_label_short"] = out_df["cluster_id"].map(cluster_labels_short)
+    out_df["cluster_label_long"] = out_df["cluster_id"].map(cluster_labels_long)
+    out_df["pca_x"] = X_pca[:, 0]
+    out_df["pca_y"] = X_pca[:, 1]
+
+    out_df.to_csv(OUT_CSV, index=False)
+    print(f"Wrote {len(out_df)} rows to {OUT_CSV}")
+
 if __name__ == "__main__":
-    main()
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == "--recluster":
+        recluster_existing_data()
+    else:
+        main()
