@@ -1298,8 +1298,10 @@ export default function App() {
       "Inkomen p.p.",
       "65+ percentage",
       "Mate stedelijkheid",
+      "Seksueel geweld",
       "Criminaliteit geweld",
-      "Criminaliteit vermogens"
+      "Criminaliteit vermogens",
+      "Vernieling"
     ];
 
     const mainData = [
@@ -1307,8 +1309,10 @@ export default function App() {
       normalize(result.cbsStats.incomePerPerson, 20, 60), // inkomen 20k-60k ×1000€
       normalize(result.cbsStats.pct65Plus, 0, 40), // 65+ 0-40%
       normalize(result.cbsStats.stedelijkheid, 1, 5) * 20, // stedelijkheid 1-5 → 20-100
+      normalize(result.cbsStats.seksueelGeweld, 0, 2), // seksueel geweld 0-2 per 1000
       normalize(result.cbsStats.geweldsMisdrijven, 0, 10), // geweld 0-10 per 1000
       normalize(result.cbsStats.vermogensMisdrijven, 0, 20), // vermogens 0-20 per 1000
+      normalize(result.cbsStats.vernielingsMisdrijven, 0, 5), // vernieling 0-5 per 1000
     ];
 
     const compareData = [
@@ -1316,8 +1320,10 @@ export default function App() {
       normalize(compareResult.cbsStats.incomePerPerson, 20, 60),
       normalize(compareResult.cbsStats.pct65Plus, 0, 40),
       normalize(compareResult.cbsStats.stedelijkheid, 1, 5) * 20,
+      normalize(compareResult.cbsStats.seksueelGeweld, 0, 2),
       normalize(compareResult.cbsStats.geweldsMisdrijven, 0, 10),
       normalize(compareResult.cbsStats.vermogensMisdrijven, 0, 20),
+      normalize(compareResult.cbsStats.vernielingsMisdrijven, 0, 5),
     ];
 
     return {
@@ -1379,12 +1385,18 @@ export default function App() {
           } else if (category === "Mate stedelijkheid") {
             mainLabel = result.cbsStats.stedelijkheid ? `${result.cbsStats.stedelijkheid}/5` : "n.v.t.";
             compareLabel = compareResult.cbsStats.stedelijkheid ? `${compareResult.cbsStats.stedelijkheid}/5` : "n.v.t.";
+          } else if (category === "Seksueel geweld") {
+            mainLabel = result.cbsStats.seksueelGeweld ? `${result.cbsStats.seksueelGeweld.toFixed(1)} per 1000` : "n.v.t.";
+            compareLabel = compareResult.cbsStats.seksueelGeweld ? `${compareResult.cbsStats.seksueelGeweld.toFixed(1)} per 1000` : "n.v.t.";
           } else if (category === "Criminaliteit geweld") {
             mainLabel = result.cbsStats.geweldsMisdrijven ? `${result.cbsStats.geweldsMisdrijven.toFixed(1)} per 1000` : "n.v.t.";
             compareLabel = compareResult.cbsStats.geweldsMisdrijven ? `${compareResult.cbsStats.geweldsMisdrijven.toFixed(1)} per 1000` : "n.v.t.";
           } else if (category === "Criminaliteit vermogens") {
             mainLabel = result.cbsStats.vermogensMisdrijven ? `${result.cbsStats.vermogensMisdrijven.toFixed(1)} per 1000` : "n.v.t.";
             compareLabel = compareResult.cbsStats.vermogensMisdrijven ? `${compareResult.cbsStats.vermogensMisdrijven.toFixed(1)} per 1000` : "n.v.t.";
+          } else if (category === "Vernieling") {
+            mainLabel = result.cbsStats.vernielingsMisdrijven ? `${result.cbsStats.vernielingsMisdrijven.toFixed(1)} per 1000` : "n.v.t.";
+            compareLabel = compareResult.cbsStats.vernielingsMisdrijven ? `${compareResult.cbsStats.vernielingsMisdrijven.toFixed(1)} per 1000` : "n.v.t.";
           }
 
           return `<b>${category}</b><br/>
@@ -2012,14 +2024,32 @@ export default function App() {
                           </div>
                         )}
 
+                        {result.cbsStats?.seksueelGeweld != null && (
+                          <div className="stat-card">
+                            <div className="stat-label">Seksueel geweld</div>
+                            <div
+                              className="stat-value"
+                              title={result.cbsStats.criminaliteitDetail ? `Opbouw:\n• Zedenmisdrijven tegen jeugdigen: ${result.cbsStats.criminaliteitDetail.seksueelGeweld_1_4_1 || 0}\n• Overige zedenmisdrijven: ${result.cbsStats.criminaliteitDetail.seksueelGeweld_1_4_2 || 0}` : ""}
+                            >
+                              {formatOrNA(result.cbsStats.seksueelGeweld, nf1)}
+                            </div>
+                            <div className="stat-help">
+                              Seksueel geweld per 1.000 inwoners (CBS 2023). Klik voor details.
+                            </div>
+                          </div>
+                        )}
+
                         {result.cbsStats?.geweldsMisdrijven != null && (
                           <div className="stat-card">
                             <div className="stat-label">Geweldsmisdrijven</div>
-                            <div className="stat-value">
-                              {formatOrNA(result.cbsStats.geweldsMisdrijven, nf0)}
+                            <div
+                              className="stat-value"
+                              title={result.cbsStats.criminaliteitDetail ? `Opbouw:\n• Mishandeling: ${result.cbsStats.criminaliteitDetail.geweld_1_4_4 || 0}\n• Bedreiging: ${result.cbsStats.criminaliteitDetail.geweld_1_4_3 || 0}\n• Straatroof: ${result.cbsStats.criminaliteitDetail.geweld_1_4_6 || 0}\n• Overvallen: ${result.cbsStats.criminaliteitDetail.geweld_1_4_7 || 0}\n• Moord/doodslag: ${result.cbsStats.criminaliteitDetail.geweld_1_4_5 || 0}` : ""}
+                            >
+                              {formatOrNA(result.cbsStats.geweldsMisdrijven, nf1)}
                             </div>
                             <div className="stat-help">
-                              Gewelds- en seksuele misdrijven per 1.000 inwoners (CBS 2024).
+                              Geweldsmisdrijven per 1.000 inwoners (CBS 2023). Klik voor details.
                             </div>
                           </div>
                         )}
@@ -2027,11 +2057,29 @@ export default function App() {
                         {result.cbsStats?.vermogensMisdrijven != null && (
                           <div className="stat-card">
                             <div className="stat-label">Vermogensmisdrijven</div>
-                            <div className="stat-value">
-                              {formatOrNA(result.cbsStats.vermogensMisdrijven, nf0)}
+                            <div
+                              className="stat-value"
+                              title={result.cbsStats.criminaliteitDetail ? `Opbouw:\n• Diefstal/inbraak woning: ${result.cbsStats.criminaliteitDetail.vermogens_1_1_1 || 0}\n• Diefstal motorvoertuigen: ${result.cbsStats.criminaliteitDetail.vermogens_1_2_1 || 0}` : ""}
+                            >
+                              {formatOrNA(result.cbsStats.vermogensMisdrijven, nf1)}
                             </div>
                             <div className="stat-help">
-                              Diefstal uit woning/schuur e.d. per 1.000 inwoners (CBS 2024).
+                              Vermogensmisdrijven per 1.000 inwoners (CBS 2023). Klik voor details.
+                            </div>
+                          </div>
+                        )}
+
+                        {result.cbsStats?.vernielingsMisdrijven != null && (
+                          <div className="stat-card">
+                            <div className="stat-label">Vernieling/openbare orde</div>
+                            <div
+                              className="stat-value"
+                              title={result.cbsStats.criminaliteitDetail ? `Opbouw:\n• Vernieling zaakbeschadiging: ${result.cbsStats.criminaliteitDetail.vernieling_2_2_1 || 0}\n• Openbare orde: ${result.cbsStats.criminaliteitDetail.vernieling_3_6_4 || 0}` : ""}
+                            >
+                              {formatOrNA(result.cbsStats.vernielingsMisdrijven, nf1)}
+                            </div>
+                            <div className="stat-help">
+                              Vernieling en openbare orde per 1.000 inwoners (CBS 2023). Klik voor details.
                             </div>
                           </div>
                         )}

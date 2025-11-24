@@ -913,6 +913,28 @@ async def buurt_stats(buurt_code: str = Query(..., description="CBS buurtcode, b
         "vermogensMisdrijven": float(row.get("crime_property", 0)) if pd.notna(row.get("crime_property")) else None,
         "vernielingsMisdrijven": float(row.get("crime_vandalism", 0)) if pd.notna(row.get("crime_vandalism")) else None,
 
+        # GEDTAILLEERDE ONDERLIGGENDE DATA voor tooltips
+        "criminaliteitDetail": {
+            # Seksueel geweld breakdown
+            "seksueelGeweld_1_4_1": float(row.get("crime_1_4_1", 0)) if pd.notna(row.get("crime_1_4_1")) else None,  # Zedenmisdrijven tegen jeugdigen
+            "seksueelGeweld_1_4_2": float(row.get("crime_1_4_2", 0)) if pd.notna(row.get("crime_1_4_2")) else None,  # Overige zedenmisdrijven
+
+            # Geweldmisdrijven breakdown
+            "geweld_1_4_3": float(row.get("crime_1_4_3", 0)) if pd.notna(row.get("crime_1_4_3")) else None,  # Bedreiging
+            "geweld_1_4_4": float(row.get("crime_1_4_4", 0)) if pd.notna(row.get("crime_1_4_4")) else None,  # Mishandeling
+            "geweld_1_4_5": float(row.get("crime_1_4_5", 0)) if pd.notna(row.get("crime_1_4_5")) else None,  # Moord/doodslag
+            "geweld_1_4_6": float(row.get("crime_1_4_6", 0)) if pd.notna(row.get("crime_1_4_6")) else None,  # Straatroof
+            "geweld_1_4_7": float(row.get("crime_1_4_7", 0)) if pd.notna(row.get("crime_1_4_7")) else None,  # Overvallen
+
+            # Vermogensmisdrijven breakdown (voorbeeld van belangrijkste)
+            "vermogens_1_1_1": float(row.get("crime_1_1_1", 0)) if pd.notna(row.get("crime_1_1_1")) else None,  # Diefstal/inbraak woning
+            "vermogens_1_2_1": float(row.get("crime_1_2_1", 0)) if pd.notna(row.get("crime_1_2_1")) else None,  # Diefstal uit/vanaf motorvoertuigen
+
+            # Vernieling/openbare orde breakdown
+            "vernieling_2_2_1": float(row.get("crime_2_2_1", 0)) if pd.notna(row.get("crime_2_2_1")) else None,  # Vernieling cq. zaakbeschadiging
+            "vernieling_3_6_4": float(row.get("crime_3_6_4", 0)) if pd.notna(row.get("crime_3_6_4")) else None,  # Aantasting openbare orde
+        },
+
         # Afstanden tot voorzieningen
         "afstandHuisarts": float(row.get("AfstandTotHuisartsenpraktijk_112", 0)) if pd.notna(row.get("AfstandTotHuisartsenpraktijk_112")) else None,
         "afstandSupermarkt": float(row.get("AfstandTotGroteSupermarkt_113", 0)) if pd.notna(row.get("AfstandTotGroteSupermarkt_113")) else None,

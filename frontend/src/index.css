@@ -538,3 +538,14 @@ button:disabled {
   font-weight: 500;
   color: #9ca3af;
 }
+
+/* Tooltips voor gedetailleerde criminaliteit */
+.stat-value[title] {
+  cursor: help;
+  border-bottom: 1px dotted #6b7280;
+  transition: color 0.2s ease;
+}
+
+.stat-value[title]:hover {
+  color: #3b82f6;
+}

@@ -322,7 +322,26 @@ def fetch_all_data():
         # Voeg categorie toe aan crime data
         crime_df['crime_category'] = crime_df['SoortMisdrijf'].apply(categorize_crime)
 
-        # Aggregeer per buurt en categorie
+        # BEHOUD ORIGINELE GEDETAILLEERDE DATA voor tooltips
+        # Maak een pivot table met alle individuele categorieën
+        detailed_crime_pivot = crime_df.pivot_table(
+            index=regio_col,
+            columns='SoortMisdrijf',
+            values=crime_col,
+            fill_value=0
+        ).reset_index()
+
+        # Hernoem kolommen voor betere leesbaarheid
+        rename_dict = {regio_col: "WijkenEnBuurten"}
+        for col in detailed_crime_pivot.columns:
+            if col != "WijkenEnBuurten" and str(col).strip():
+                # Maak kolomnamen als "crime_1_4_1", "crime_1_4_2", etc.
+                clean_code = str(col).strip().replace('.', '_')
+                rename_dict[col] = f"crime_{clean_code}"
+
+        detailed_crime_pivot = detailed_crime_pivot.rename(columns=rename_dict)
+
+        # Aggregeer per buurt en categorie (voor clustering)
         crime_agg = crime_df.groupby([regio_col, 'crime_category'])[crime_col].sum().unstack(fill_value=0).reset_index()
         crime_agg = crime_agg.rename(columns={
             regio_col: "WijkenEnBuurten",
@@ -334,9 +353,12 @@ def fetch_all_data():
         })
 
         # Voeg totaal toe als fallback (som van alle categorieën)
-        crime_cols = [col for col in crime_agg.columns if col.startswith('crime_') and col not in ['total_crimes', 'crime_other']]
+        crime_cols = [col for col in crime_agg.columns if col.startswith('crime_') and col != 'total_crimes']
         if 'total_crimes' not in crime_agg.columns:
             crime_agg['total_crimes'] = crime_agg[crime_cols].sum(axis=1)
+
+        # COMBINEER: Voeg gedetailleerde kolommen toe aan aggregatie
+        crime_agg = crime_agg.merge(detailed_crime_pivot, on="WijkenEnBuurten", how="left")
 
         print(f"Gedetailleerde crime aggregatie:")
         print(f"  - Totaal misdrijven: {crime_agg['total_crimes'].sum()}")
