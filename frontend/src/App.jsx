@@ -322,7 +322,8 @@ export default function App() {
     // Als we een pdokDoc hebben, gebruik deze direct
     // Anders doe een normale PDOK zoekopdracht
     let doc;
-    if (pdokDoc) {
+    if (pdokDoc && pdokDoc.id) {
+      // Check if pdokDoc has required fields, otherwise fall back to free search
       doc = pdokDoc;
     } else {
       // Fallback: doe normale PDOK zoekopdracht
@@ -349,15 +350,45 @@ export default function App() {
           doc.postcode || ""
         } ${doc.woonplaatsnaam || ""}`;
 
-      // Coördinaten uit centroide_ll
+      // Coördinaten uit centroide_ll (PDOK free API)
       let coords = null;
       if (doc.centroide_ll) {
-      const match = doc.centroide_ll.match(/POINT\(([^ ]+) ([^)]+)\)/);
+        const match = doc.centroide_ll.match(/POINT\(([^ ]+) ([^)]+)\)/);
         if (match) {
           const lon = parseFloat(match[1]);
           const lat = parseFloat(match[2]);
           if (!Number.isNaN(lat) && !Number.isNaN(lon)) {
             coords = [lat, lon];
+          }
+        }
+      }
+
+      // Fallback: als geen coords gevonden, doe een nieuwe free search
+      if (!coords && pdokDoc) {
+        console.log("No coords in pdokDoc, doing fallback free search");
+        const fallbackUrl = `${PDOK_FREE_URL}?q=${encodeURIComponent(
+          formattedAddress
+        )}&rows=1&fq=type:adres`;
+        const fallbackResp = await fetch(fallbackUrl, {
+          headers: { Accept: "application/json" },
+        });
+        if (fallbackResp.ok) {
+          const fallbackData = await fallbackResp.json();
+          const fallbackDocs = fallbackData.response?.docs || [];
+          if (fallbackDocs.length > 0) {
+            const fallbackDoc = fallbackDocs[0];
+            if (fallbackDoc.centroide_ll) {
+              const match = fallbackDoc.centroide_ll.match(/POINT\(([^ ]+) ([^)]+)\)/);
+              if (match) {
+                const lon = parseFloat(match[1]);
+                const lat = parseFloat(match[2]);
+                if (!Number.isNaN(lat) && !Number.isNaN(lon)) {
+                  coords = [lat, lon];
+                  // Update doc with fallback data
+                  doc = { ...doc, ...fallbackDoc };
+                }
+              }
+            }
           }
         }
       }
