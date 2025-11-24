@@ -82,32 +82,30 @@ h1 {
   margin: 0 0 0.5rem;
 }
 
-/* Three-column comparison layout */
-
-.insights-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr);
-  gap: 1.4rem;
-  align-items: flex-start;
+/* Main map container - full width */
+.main-map-container {
+  width: 100%;
 }
 
-.insights-map-column,
-.insights-compare-column,
-.insights-panel-column {
+/* Comparison section layout */
+.comparison-section {
+  margin-top: 2rem;
+}
+
+.comparison-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  gap: 1.6rem;
+  align-items: start;
+}
+
+.comparison-left,
+.comparison-right {
   min-width: 0;
 }
 
-@media (max-width: 1200px) {
-  .insights-grid {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  }
-  .insights-panel-column {
-    grid-column: 1 / -1;
-  }
-}
-
-@media (max-width: 900px) {
-  .insights-grid {
+@media (max-width: 1000px) {
+  .comparison-layout {
     grid-template-columns: minmax(0, 1fr);
   }
 }

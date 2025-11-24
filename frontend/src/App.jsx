@@ -1950,10 +1950,9 @@ export default function App() {
               </section>
             )}
 
-            {/* MAP + STATS + AI/ML INSIGHTS */}
-            <section className="section insights-grid">
-              {/* Left: main neighborhood map */}
-              <div className="insights-map-column">
+            {/* MAIN NEIGHBORHOOD MAP - FULL WIDTH */}
+            <section className="section">
+              <div className="main-map-container">
                 {result.coords && (
                   <div className="map-card">
                     <div ref={mapContainerRef} className="map" />
@@ -1963,426 +1962,430 @@ export default function App() {
                   </div>
                 )}
               </div>
+            </section>
 
-              {/* Middle: comparison neighborhood */}
-              <div className="insights-compare-column">
-                <h3>Vergelijk met andere buurt</h3>
+            {/* COMPARISON SECTION */}
+            <section className="section comparison-section">
+              <h2>Vergelijk met andere buurt</h2>
+              <div className="comparison-layout">
+                {/* Left: comparison search and map */}
+                <div className="comparison-left">
+                  <AddressSearchBar
+                    loading={compareLoading}
+                    onSelect={(address, rawDoc) => {
+                      setCompareQuery(address);
+                      // Direct starten met zoek-functie
+                      handleCompareSearchFromSuggestion(address, rawDoc);
+                    }}
+                  />
 
-                <AddressSearchBar
-                  loading={compareLoading}
-                  onSelect={(address, rawDoc) => {
-                    setCompareQuery(address);
-                    // Direct starten met zoek-functie
-                    handleCompareSearchFromSuggestion(address, rawDoc);
-                  }}
-                />
+                  {compareError && <div className="error">{compareError}</div>}
 
-                {compareError && <div className="error">{compareError}</div>}
-
-                {compareResult && compareResult.coords && (
-                  <div className="map-card" style={{ marginTop: "1rem" }}>
-                    <div ref={compareMapContainerRef} className="compare-map" />
-                    <p className="small">
-                      Vergelijkingslocatie. Geen juridisch kaartmateriaal.
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {/* Right: panels */}
-              <div className="insights-panel-column">
-                {/* Buurtcijfers + Geo feature */}
-                <div className="panel-block">
-                  <h2>Buurt in één oogopslag</h2>
-                  {result.cbsStats ? (
-                    <div className="stat-grid">
-                      {result.cbsStats.population != null && (
-                        <div className="stat-card">
-                          <div className="stat-label">Inwoners (totaal)</div>
-                          <div className="stat-value">
-                            {formatOrNA(result.cbsStats.population, nf0)}
-                          </div>
-                          <div className="stat-help">
-                            Hoeveel mensen er in de buurt wonen (CBS-data).
-                          </div>
-                        </div>
-                      )}
-
-                      {result.cbsStats.density != null && (
-                        <div className="stat-card">
-                          <div className="stat-label">Bevolkingsdichtheid</div>
-                          <div className="stat-value">
-                            {formatOrNA(result.cbsStats.density, nf0)}
-                            <span className="small"> / km²</span>
-                          </div>
-                          <div className="stat-help">
-                            Hogere dichtheid betekent meestal een drukkere wijk met
-                            meer voorzieningen.
-                          </div>
-                        </div>
-                      )}
-
-                      {result.cbsStats.pct65Plus != null && (
-                        <div className="stat-card">
-                          <div className="stat-label">% 65-plus</div>
-                          <div className="stat-value">
-                            {formatOrNA(result.cbsStats.pct65Plus, nf1)}
-                            <span className="small"> %</span>
-                          </div>
-                          <div className="stat-help">
-                            Percentage bewoners van 65 jaar en ouder.
-                          </div>
-                        </div>
-                      )}
-
-                      {result.cbsStats.incomePerPerson != null && (
-                        <div className="stat-card">
-                          <div className="stat-label">
-                            Gem. inkomen per persoon
-                          </div>
-                          <div className="stat-value">
-                            € {formatOrNA(result.cbsStats.incomePerPerson, nf0)}
-                          </div>
-                          <div className="stat-help">
-                            Gemiddeld besteedbaar inkomen per persoon (CBS).
-                          </div>
-                        </div>
-                      )}
-
-                      {storyAreaHa != null && (
-                        <div className="stat-card">
-                          <div className="stat-label">
-                            Oppervlakte pand (ongeveer)
-                          </div>
-                          <div className="stat-value">
-                            {formatOrNA(storyAreaHa, nf1)}
-                            <span className="small"> ha</span>
-                          </div>
-                          <div className="stat-help">
-                            Berekend met GeoPandas op basis van BAG-geometrie
-                            (indicatief).
-                          </div>
-                        </div>
-                      )}
-
-                      {result.crimeData && result.crimeData.total_crimes != null && (
-                        <div className="stat-card">
-                          <div className="stat-label">Criminaliteit (2024)</div>
-                          <div className="stat-value">
-                            {formatOrNA(result.crimeData.total_crimes, nf0)}
-                          </div>
-                          <div className="stat-help">
-                            Geregistreerde misdrijven in deze buurt (CBS Politie data).
-                          </div>
-                        </div>
-                      )}
-
-                      {result.cbsStats?.geweldsMisdrijven != null && (
-                        <div className="stat-card">
-                          <div className="stat-label">Geweldsmisdrijven</div>
-                          <div className="stat-value">
-                            {formatOrNA(result.cbsStats.geweldsMisdrijven, nf0)}
-                          </div>
-                          <div className="stat-help">
-                            Gewelds- en seksuele misdrijven per 1.000 inwoners (CBS 2024).
-                          </div>
-                        </div>
-                      )}
-
-                      {result.cbsStats?.vermogensMisdrijven != null && (
-                        <div className="stat-card">
-                          <div className="stat-label">Vermogensmisdrijven</div>
-                          <div className="stat-value">
-                            {formatOrNA(result.cbsStats.vermogensMisdrijven, nf0)}
-                          </div>
-                          <div className="stat-help">
-                            Diefstal uit woning/schuur e.d. per 1.000 inwoners (CBS 2024).
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Voorzieningen afstanden */}
-                      {result.cbsStats?.amenities?.supermarket_km != null && (
-                        <div className="stat-card">
-                          <div className="stat-label">Afstand supermarkt</div>
-                          <div className="stat-value">
-                            {formatOrNA(result.cbsStats.amenities.supermarket_km, nf1)}
-                            <span className="small"> km</span>
-                          </div>
-                          <div className="stat-help">
-                            Gemiddelde afstand tot dichtstbijzijnde grote supermarkt.
-                          </div>
-                        </div>
-                      )}
-
-                      {result.cbsStats?.amenities?.huisarts_km != null && (
-                        <div className="stat-card">
-                          <div className="stat-label">Afstand huisarts</div>
-                          <div className="stat-value">
-                            {formatOrNA(result.cbsStats.amenities.huisarts_km, nf1)}
-                            <span className="small"> km</span>
-                          </div>
-                          <div className="stat-help">
-                            Gemiddelde afstand tot dichtstbijzijnde huisartsenpraktijk.
-                          </div>
-                        </div>
-                      )}
-
-                      {result.cbsStats?.amenities?.school_km != null && (
-                        <div className="stat-card">
-                          <div className="stat-label">Afstand school</div>
-                          <div className="stat-value">
-                            {formatOrNA(result.cbsStats.amenities.school_km, nf1)}
-                            <span className="small"> km</span>
-                          </div>
-                          <div className="stat-help">
-                            Gemiddelde afstand tot dichtstbijzijnde school.
-                          </div>
-                        </div>
-                      )}
-
-                      {result.cbsStats?.amenities?.kinderdagverblijf_km != null && (
-                        <div className="stat-card">
-                          <div className="stat-label">Afstand kinderdagverblijf</div>
-                          <div className="stat-value">
-                            {formatOrNA(result.cbsStats.amenities.kinderdagverblijf_km, nf1)}
-                            <span className="small"> km</span>
-                          </div>
-                          <div className="stat-help">
-                            Gemiddelde afstand tot dichtstbijzijnde kinderdagverblijf.
-                          </div>
-                        </div>
-                      )}
-
-                      {result.cbsStats?.stedelijkheid != null && (
-                        <div className="stat-card">
-                          <div className="stat-label">Mate van stedelijkheid</div>
-                          <div className="stat-value">
-                            {result.cbsStats.stedelijkheid}/5
-                          </div>
-                          <div className="stat-help">
-                            1=zeer sterk stedelijk, 5=niet stedelijk (CBS indeling).
-                          </div>
-                        </div>
-                      )}
-
-                      {result.cbsStats?.pctAppartementen != null && (
-                        <div className="stat-card">
-                          <div className="stat-label">Woningen</div>
-                          <div className="stat-value">
-                            {formatOrNA(result.cbsStats.pctAppartementen, nf1)}%
-                            <span className="small"> appartementen</span>
-                          </div>
-                          <div className="stat-help">
-                            Percentage appartementen in deze buurt.
-                          </div>
-                        </div>
-                      )}
-
-                      {result.cbsStats?.carsPerHousehold != null && (
-                        <div className="stat-card">
-                          <div className="stat-label">Auto's per huishouden</div>
-                          <div className="stat-value">
-                            {formatOrNA(result.cbsStats.carsPerHousehold, nf1)}
-                          </div>
-                          <div className="stat-help">
-                            Gemiddeld aantal personenauto's per huishouden.
-                          </div>
-                        </div>
-                      )}
+                  {compareResult && compareResult.coords && (
+                    <div className="map-card" style={{ marginTop: "1rem" }}>
+                      <div ref={compareMapContainerRef} className="compare-map" />
+                      <p className="small">
+                        Vergelijkingslocatie. Geen juridisch kaartmateriaal.
+                      </p>
                     </div>
-                  ) : (
-                    <p className="small">Geen CBS-buurtcijfers gevonden.</p>
                   )}
                 </div>
 
-                {/* Leeftijd + inkomen charts */}
-                {(ageChartOptions || incomeChartOptions) && (
-                  <div className="panel-block charts-row">
-                    {ageChartOptions && (
-                      <div className="chart-card">
-                        <HighchartsReact
-                          highcharts={Highcharts}
-                          options={ageChartOptions}
-                        />
-                      </div>
-                    )}
-                    {incomeChartOptions && (
-                      <div className="chart-card">
-                        <HighchartsReact
-                          highcharts={Highcharts}
-                          options={incomeChartOptions}
-                        />
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* AI + ML panel */}
-                <div className="panel-block">
-                  <h2>AI & ML-inzichten</h2>
-
-                  {clusterInfo && (
-                    <div className="stat-card" style={{ marginBottom: "0.6rem" }}>
-                      <div className="stat-label">Buurtprofiel (cluster)</div>
-                      <div className="stat-value">
-                        <span style={{ marginRight: "0.35rem" }}>
-                          {getClusterIcon(capitalizeFirst(clusterInfo.label))}
-                        </span>
-                        {capitalizeFirst(clusterInfo.label) || clusterInfo.label}
-                      </div>
-                      {clusterInfo.label_long && (
-                        <div className="stat-help small">{clusterInfo.label_long}</div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* AI verhaal */}
-                  <div className="stat-card" style={{ marginBottom: "0.6rem" }}>
-                    <div className="stat-label">AI-buurtverhaal</div>
-                    <div className="form-row" style={{ margin: "0.4rem 0 0.4rem" }}>
-                      <button
-                        type="button"
-                        onClick={() => generateStory("starter")}
-                        disabled={storyLoading}
-                      >
-                        {storyLoading ? "AI is bezig..." : "Maak buurtverhaal"}
-                      </button>
-                    </div>
-                    {storyText && (
-                      <div className="story-card">
-                        <ReactMarkdown>{storyText}</ReactMarkdown>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Vergelijkbare buurten */}
-                  {similarBuurten && similarBuurten.neighbours?.length > 0 && (
-                    <div className="stat-card" style={{ marginBottom: "0.6rem" }}>
-                      <div className="stat-label">Vergelijkbare buurten (KNN)</div>
-                      <ul className="similar-list">
-                        {similarBuurten.neighbours.map((b) => (
-                          <li key={b.buurt_code}>
-                            <span className="similar-icon">
-                              {getClusterIcon(capitalizeFirst(b.cluster_label_short))}
-                            </span>
-                            <div className="similar-main">
-                              <div className="similar-title">
-                                {b.buurt_code} – {b.gemeente}
-                              </div>
-                              <div className="small">
-                                {capitalizeFirst(b.cluster_label_short)} •{" "}
-                                {b.income_per_person != null
-                                  ? `inkomen: ${formatOrNA(b.income_per_person, nf1)} × 1000 €`
-                                  : "inkomen: n.v.t."}
-                                {b.population != null
-                                  ? ` • inwoners: ${formatOrNA(b.population, nf0)}`
-                                  : ""}
-                              </div>
+                {/* Right: stats and panels */}
+                <div className="comparison-right">
+                  {/* Buurtcijfers + Geo feature */}
+                  <div className="panel-block">
+                    <h2>Buurt in één oogopslag</h2>
+                    {result.cbsStats ? (
+                      <div className="stat-grid">
+                        {result.cbsStats.population != null && (
+                          <div className="stat-card">
+                            <div className="stat-label">Inwoners (totaal)</div>
+                            <div className="stat-value">
+                              {formatOrNA(result.cbsStats.population, nf0)}
                             </div>
-                          </li>
-                        ))}
-                      </ul>
+                            <div className="stat-help">
+                              Hoeveel mensen er in de buurt wonen (CBS-data).
+                            </div>
+                          </div>
+                        )}
+
+                        {result.cbsStats.density != null && (
+                          <div className="stat-card">
+                            <div className="stat-label">Bevolkingsdichtheid</div>
+                            <div className="stat-value">
+                              {formatOrNA(result.cbsStats.density, nf0)}
+                              <span className="small"> / km²</span>
+                            </div>
+                            <div className="stat-help">
+                              Hogere dichtheid betekent meestal een drukkere wijk met
+                              meer voorzieningen.
+                            </div>
+                          </div>
+                        )}
+
+                        {result.cbsStats.pct65Plus != null && (
+                          <div className="stat-card">
+                            <div className="stat-label">% 65-plus</div>
+                            <div className="stat-value">
+                              {formatOrNA(result.cbsStats.pct65Plus, nf1)}
+                              <span className="small"> %</span>
+                            </div>
+                            <div className="stat-help">
+                              Percentage bewoners van 65 jaar en ouder.
+                            </div>
+                          </div>
+                        )}
+
+                        {result.cbsStats.incomePerPerson != null && (
+                          <div className="stat-card">
+                            <div className="stat-label">
+                              Gem. inkomen per persoon
+                            </div>
+                            <div className="stat-value">
+                              € {formatOrNA(result.cbsStats.incomePerPerson, nf0)}
+                            </div>
+                            <div className="stat-help">
+                              Gemiddeld besteedbaar inkomen per persoon (CBS).
+                            </div>
+                          </div>
+                        )}
+
+                        {storyAreaHa != null && (
+                          <div className="stat-card">
+                            <div className="stat-label">
+                              Oppervlakte pand (ongeveer)
+                            </div>
+                            <div className="stat-value">
+                              {formatOrNA(storyAreaHa, nf1)}
+                              <span className="small"> ha</span>
+                            </div>
+                            <div className="stat-help">
+                              Berekend met GeoPandas op basis van BAG-geometrie
+                              (indicatief).
+                            </div>
+                          </div>
+                        )}
+
+                        {result.crimeData && result.crimeData.total_crimes != null && (
+                          <div className="stat-card">
+                            <div className="stat-label">Criminaliteit (2024)</div>
+                            <div className="stat-value">
+                              {formatOrNA(result.crimeData.total_crimes, nf0)}
+                            </div>
+                            <div className="stat-help">
+                              Geregistreerde misdrijven in deze buurt (CBS Politie data).
+                            </div>
+                          </div>
+                        )}
+
+                        {result.cbsStats?.geweldsMisdrijven != null && (
+                          <div className="stat-card">
+                            <div className="stat-label">Geweldsmisdrijven</div>
+                            <div className="stat-value">
+                              {formatOrNA(result.cbsStats.geweldsMisdrijven, nf0)}
+                            </div>
+                            <div className="stat-help">
+                              Gewelds- en seksuele misdrijven per 1.000 inwoners (CBS 2024).
+                            </div>
+                          </div>
+                        )}
+
+                        {result.cbsStats?.vermogensMisdrijven != null && (
+                          <div className="stat-card">
+                            <div className="stat-label">Vermogensmisdrijven</div>
+                            <div className="stat-value">
+                              {formatOrNA(result.cbsStats.vermogensMisdrijven, nf0)}
+                            </div>
+                            <div className="stat-help">
+                              Diefstal uit woning/schuur e.d. per 1.000 inwoners (CBS 2024).
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Voorzieningen afstanden */}
+                        {result.cbsStats?.amenities?.supermarket_km != null && (
+                          <div className="stat-card">
+                            <div className="stat-label">Afstand supermarkt</div>
+                            <div className="stat-value">
+                              {formatOrNA(result.cbsStats.amenities.supermarket_km, nf1)}
+                              <span className="small"> km</span>
+                            </div>
+                            <div className="stat-help">
+                              Gemiddelde afstand tot dichtstbijzijnde grote supermarkt.
+                            </div>
+                          </div>
+                        )}
+
+                        {result.cbsStats?.amenities?.huisarts_km != null && (
+                          <div className="stat-card">
+                            <div className="stat-label">Afstand huisarts</div>
+                            <div className="stat-value">
+                              {formatOrNA(result.cbsStats.amenities.huisarts_km, nf1)}
+                              <span className="small"> km</span>
+                            </div>
+                            <div className="stat-help">
+                              Gemiddelde afstand tot dichtstbijzijnde huisartsenpraktijk.
+                            </div>
+                          </div>
+                        )}
+
+                        {result.cbsStats?.amenities?.school_km != null && (
+                          <div className="stat-card">
+                            <div className="stat-label">Afstand school</div>
+                            <div className="stat-value">
+                              {formatOrNA(result.cbsStats.amenities.school_km, nf1)}
+                              <span className="small"> km</span>
+                            </div>
+                            <div className="stat-help">
+                              Gemiddelde afstand tot dichtstbijzijnde school.
+                            </div>
+                          </div>
+                        )}
+
+                        {result.cbsStats?.amenities?.kinderdagverblijf_km != null && (
+                          <div className="stat-card">
+                            <div className="stat-label">Afstand kinderdagverblijf</div>
+                            <div className="stat-value">
+                              {formatOrNA(result.cbsStats.amenities.kinderdagverblijf_km, nf1)}
+                              <span className="small"> km</span>
+                            </div>
+                            <div className="stat-help">
+                              Gemiddelde afstand tot dichtstbijzijnde kinderdagverblijf.
+                            </div>
+                          </div>
+                        )}
+
+                        {result.cbsStats?.stedelijkheid != null && (
+                          <div className="stat-card">
+                            <div className="stat-label">Mate van stedelijkheid</div>
+                            <div className="stat-value">
+                              {result.cbsStats.stedelijkheid}/5
+                            </div>
+                            <div className="stat-help">
+                              1=zeer sterk stedelijk, 5=niet stedelijk (CBS indeling).
+                            </div>
+                          </div>
+                        )}
+
+                        {result.cbsStats?.pctAppartementen != null && (
+                          <div className="stat-card">
+                            <div className="stat-label">Woningen</div>
+                            <div className="stat-value">
+                              {formatOrNA(result.cbsStats.pctAppartementen, nf1)}%
+                              <span className="small"> appartementen</span>
+                            </div>
+                            <div className="stat-help">
+                              Percentage appartementen in deze buurt.
+                            </div>
+                          </div>
+                        )}
+
+                        {result.cbsStats?.carsPerHousehold != null && (
+                          <div className="stat-card">
+                            <div className="stat-label">Auto's per huishouden</div>
+                            <div className="stat-value">
+                              {formatOrNA(result.cbsStats.carsPerHousehold, nf1)}
+                            </div>
+                            <div className="stat-help">
+                              Gemiddeld aantal personenauto's per huishouden.
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="small">Geen CBS-buurtcijfers gevonden.</p>
+                    )}
+                  </div>
+
+                  {/* Leeftijd + inkomen charts */}
+                  {(ageChartOptions || incomeChartOptions) && (
+                    <div className="panel-block charts-row">
+                      {ageChartOptions && (
+                        <div className="chart-card">
+                          <HighchartsReact
+                            highcharts={Highcharts}
+                            options={ageChartOptions}
+                          />
+                        </div>
+                      )}
+                      {incomeChartOptions && (
+                        <div className="chart-card">
+                          <HighchartsReact
+                            highcharts={Highcharts}
+                            options={incomeChartOptions}
+                          />
+                        </div>
+                      )}
                     </div>
                   )}
 
-                  {mlLoading && (
-                    <p className="small" style={{ marginTop: "0.4rem" }}>
-                      ML-inzichten worden geladen...
-                    </p>
-                  )}
-                </div>
+                  {/* AI + ML panel */}
+                  <div className="panel-block">
+                    <h2>AI & ML-inzichten</h2>
 
-                {/* Vergelijkingspanel - alleen tonen als beide buurten geladen zijn */}
-                {compareResult && result && (
-                  <div className="panel-block" style={{ marginTop: "1rem" }}>
-                    <h2>Vergelijking</h2>
-
-                    {/* Radar chart voor visuele vergelijking */}
-                    {comparisonRadarOptions && (
-                      <div className="chart-card" style={{ marginBottom: "1.5rem" }}>
-                        <HighchartsReact
-                          highcharts={Highcharts}
-                          options={comparisonRadarOptions}
-                        />
+                    {clusterInfo && (
+                      <div className="stat-card" style={{ marginBottom: "0.6rem" }}>
+                        <div className="stat-label">Buurtprofiel (cluster)</div>
+                        <div className="stat-value">
+                          <span style={{ marginRight: "0.35rem" }}>
+                            {getClusterIcon(capitalizeFirst(clusterInfo.label))}
+                          </span>
+                          {capitalizeFirst(clusterInfo.label) || clusterInfo.label}
+                        </div>
+                        {clusterInfo.label_long && (
+                          <div className="stat-help small">{clusterInfo.label_long}</div>
+                        )}
                       </div>
                     )}
 
-                    <div className="comparison-grid">
-                      {/* Bevolking vergelijking */}
-                      {(result.cbsStats?.population != null || compareResult.cbsStats?.population != null) && (
-                        <div className="comparison-row">
-                          <div className="comparison-label">Inwoners</div>
-                          <div className="comparison-value main-value">
-                            {formatOrNA(result.cbsStats?.population, nf0)}
-                          </div>
-                          <div className="comparison-value compare-value">
-                            {formatOrNA(compareResult.cbsStats?.population, nf0)}
-                          </div>
-                          <div className="comparison-diff">
-                            {result.cbsStats?.population && compareResult.cbsStats?.population
-                              ? `${result.cbsStats.population > compareResult.cbsStats.population ? '+' : ''}${(result.cbsStats.population - compareResult.cbsStats.population).toLocaleString('nl-NL')}`
-                              : 'n.v.t.'}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Dichtheid vergelijking */}
-                      {(result.cbsStats?.density != null || compareResult.cbsStats?.density != null) && (
-                        <div className="comparison-row">
-                          <div className="comparison-label">Dichtheid (/km²)</div>
-                          <div className="comparison-value main-value">
-                            {formatOrNA(result.cbsStats?.density, nf0)}
-                          </div>
-                          <div className="comparison-value compare-value">
-                            {formatOrNA(compareResult.cbsStats?.density, nf0)}
-                          </div>
-                          <div className="comparison-diff">
-                            {result.cbsStats?.density && compareResult.cbsStats?.density
-                              ? `${result.cbsStats.density > compareResult.cbsStats.density ? '+' : ''}${(result.cbsStats.density - compareResult.cbsStats.density).toFixed(0)}`
-                              : 'n.v.t.'}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Inkomen vergelijking */}
-                      {(result.cbsStats?.incomePerPerson != null || compareResult.cbsStats?.incomePerPerson != null) && (
-                        <div className="comparison-row">
-                          <div className="comparison-label">Inkomen p.p. (×1000€)</div>
-                          <div className="comparison-value main-value">
-                            {formatOrNA(result.cbsStats?.incomePerPerson, nf1)}
-                          </div>
-                          <div className="comparison-value compare-value">
-                            {formatOrNA(compareResult.cbsStats?.incomePerPerson, nf1)}
-                          </div>
-                          <div className="comparison-diff">
-                            {result.cbsStats?.incomePerPerson && compareResult.cbsStats?.incomePerPerson
-                              ? `${result.cbsStats.incomePerPerson > compareResult.cbsStats.incomePerPerson ? '+' : ''}${(result.cbsStats.incomePerPerson - compareResult.cbsStats.incomePerPerson).toFixed(1)}`
-                              : 'n.v.t.'}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Cluster vergelijking */}
-                      {(clusterInfo?.label || compareClusterInfo?.label) && (
-                        <div className="comparison-row">
-                          <div className="comparison-label">Buurt type</div>
-                          <div className="comparison-value main-value">
-                            {clusterInfo?.label || 'n.v.t.'}
-                          </div>
-                          <div className="comparison-value compare-value">
-                            {compareClusterInfo?.label || 'n.v.t.'}
-                          </div>
-                          <div className="comparison-diff">
-                            {clusterInfo?.label && compareClusterInfo?.label
-                              ? clusterInfo.label === compareClusterInfo.label ? 'gelijk' : 'verschilt'
-                              : 'n.v.t.'}
-                          </div>
+                    {/* AI verhaal */}
+                    <div className="stat-card" style={{ marginBottom: "0.6rem" }}>
+                      <div className="stat-label">AI-buurtverhaal</div>
+                      <div className="form-row" style={{ margin: "0.4rem 0 0.4rem" }}>
+                        <button
+                          type="button"
+                          onClick={() => generateStory("starter")}
+                          disabled={storyLoading}
+                        >
+                          {storyLoading ? "AI is bezig..." : "Maak buurtverhaal"}
+                        </button>
+                      </div>
+                      {storyText && (
+                        <div className="story-card">
+                          <ReactMarkdown>{storyText}</ReactMarkdown>
                         </div>
                       )}
                     </div>
+
+                    {/* Vergelijkbare buurten */}
+                    {similarBuurten && similarBuurten.neighbours?.length > 0 && (
+                      <div className="stat-card" style={{ marginBottom: "0.6rem" }}>
+                        <div className="stat-label">Vergelijkbare buurten (KNN)</div>
+                        <ul className="similar-list">
+                          {similarBuurten.neighbours.map((b) => (
+                            <li key={b.buurt_code}>
+                              <span className="similar-icon">
+                                {getClusterIcon(capitalizeFirst(b.cluster_label_short))}
+                              </span>
+                              <div className="similar-main">
+                                <div className="similar-title">
+                                  {b.buurt_code} – {b.gemeente}
+                                </div>
+                                <div className="small">
+                                  {capitalizeFirst(b.cluster_label_short)} •{" "}
+                                  {b.income_per_person != null
+                                    ? `inkomen: ${formatOrNA(b.income_per_person, nf1)} × 1000 €`
+                                    : "inkomen: n.v.t."}
+                                  {b.population != null
+                                    ? ` • inwoners: ${formatOrNA(b.population, nf0)}`
+                                    : ""}
+                                </div>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {mlLoading && (
+                      <p className="small" style={{ marginTop: "0.4rem" }}>
+                        ML-inzichten worden geladen...
+                      </p>
+                    )}
                   </div>
-                )}
+
+                  {/* Vergelijkingspanel - alleen tonen als beide buurten geladen zijn */}
+                  {compareResult && result && (
+                    <div className="panel-block" style={{ marginTop: "1rem" }}>
+                      <h2>Vergelijking</h2>
+
+                      {/* Radar chart voor visuele vergelijking */}
+                      {comparisonRadarOptions && (
+                        <div className="chart-card" style={{ marginBottom: "1.5rem" }}>
+                          <HighchartsReact
+                            highcharts={Highcharts}
+                            options={comparisonRadarOptions}
+                          />
+                        </div>
+                      )}
+
+                      <div className="comparison-grid">
+                        {/* Bevolking vergelijking */}
+                        {(result.cbsStats?.population != null || compareResult.cbsStats?.population != null) && (
+                          <div className="comparison-row">
+                            <div className="comparison-label">Inwoners</div>
+                            <div className="comparison-value main-value">
+                              {formatOrNA(result.cbsStats?.population, nf0)}
+                            </div>
+                            <div className="comparison-value compare-value">
+                              {formatOrNA(compareResult.cbsStats?.population, nf0)}
+                            </div>
+                            <div className="comparison-diff">
+                              {result.cbsStats?.population && compareResult.cbsStats?.population
+                                ? `${result.cbsStats.population > compareResult.cbsStats.population ? '+' : ''}${(result.cbsStats.population - compareResult.cbsStats.population).toLocaleString('nl-NL')}`
+                                : 'n.v.t.'}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Dichtheid vergelijking */}
+                        {(result.cbsStats?.density != null || compareResult.cbsStats?.density != null) && (
+                          <div className="comparison-row">
+                            <div className="comparison-label">Dichtheid (/km²)</div>
+                            <div className="comparison-value main-value">
+                              {formatOrNA(result.cbsStats?.density, nf0)}
+                            </div>
+                            <div className="comparison-value compare-value">
+                              {formatOrNA(compareResult.cbsStats?.density, nf0)}
+                            </div>
+                            <div className="comparison-diff">
+                              {result.cbsStats?.density && compareResult.cbsStats?.density
+                                ? `${result.cbsStats.density > compareResult.cbsStats.density ? '+' : ''}${(result.cbsStats.density - compareResult.cbsStats.density).toFixed(0)}`
+                                : 'n.v.t.'}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Inkomen vergelijking */}
+                        {(result.cbsStats?.incomePerPerson != null || compareResult.cbsStats?.incomePerPerson != null) && (
+                          <div className="comparison-row">
+                            <div className="comparison-label">Inkomen p.p. (×1000€)</div>
+                            <div className="comparison-value main-value">
+                              {formatOrNA(result.cbsStats?.incomePerPerson, nf1)}
+                            </div>
+                            <div className="comparison-value compare-value">
+                              {formatOrNA(compareResult.cbsStats?.incomePerPerson, nf1)}
+                            </div>
+                            <div className="comparison-diff">
+                              {result.cbsStats?.incomePerPerson && compareResult.cbsStats?.incomePerPerson
+                                ? `${result.cbsStats.incomePerPerson > compareResult.cbsStats.incomePerPerson ? '+' : ''}${(result.cbsStats.incomePerPerson - compareResult.cbsStats.incomePerPerson).toFixed(1)}`
+                                : 'n.v.t.'}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Cluster vergelijking */}
+                        {(clusterInfo?.label || compareClusterInfo?.label) && (
+                          <div className="comparison-row">
+                            <div className="comparison-label">Buurt type</div>
+                            <div className="comparison-value main-value">
+                              {clusterInfo?.label || 'n.v.t.'}
+                            </div>
+                            <div className="comparison-value compare-value">
+                              {compareClusterInfo?.label || 'n.v.t.'}
+                            </div>
+                            <div className="comparison-diff">
+                              {clusterInfo?.label && compareClusterInfo?.label
+                                ? clusterInfo.label === compareClusterInfo.label ? 'gelijk' : 'verschilt'
+                                : 'n.v.t.'}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </section>
           </>
