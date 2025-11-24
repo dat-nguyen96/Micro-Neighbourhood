@@ -62,7 +62,7 @@ FEATURE_COLUMNS = [
     "crime_sexual_violence",  # Seksueel geweld/zeden
     "crime_violence",         # Geweldsmisdrijven
     "crime_property",         # Vermogensmisdrijven
-    "crime_vandalism",        # Vernieling/openbare orde
+    "crime_vandalism"         # Vernieling/openbare orde
 ]
 
 # Globale in-memory data (lazy geladen uit CSV)

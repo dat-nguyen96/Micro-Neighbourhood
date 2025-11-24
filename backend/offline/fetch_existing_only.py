@@ -330,12 +330,11 @@ def fetch_all_data():
             'sexual_violence': 'crime_sexual_violence',  # Seksueel geweld
             'violence': 'crime_violence',  # Geweldmisdrijven
             'property': 'crime_property',  # Vermogensmisdrijven
-            'vandalism': 'crime_vandalism',  # Vernieling/openbare orde
-            'other': 'crime_other'
+            'vandalism': 'crime_vandalism'  # Vernieling/openbare orde
         })
 
         # Voeg totaal toe als fallback (som van alle categorieën)
-        crime_cols = [col for col in crime_agg.columns if col.startswith('crime_') and col != 'total_crimes']
+        crime_cols = [col for col in crime_agg.columns if col.startswith('crime_') and col not in ['total_crimes', 'crime_other']]
         if 'total_crimes' not in crime_agg.columns:
             crime_agg['total_crimes'] = crime_agg[crime_cols].sum(axis=1)
 
@@ -356,10 +355,9 @@ def fetch_all_data():
         merged_df["crime_violence"] = 0
         merged_df["crime_property"] = 0
         merged_df["crime_vandalism"] = 0
-        merged_df["crime_other"] = 0
 
     # Fill NaN met 0
-    crime_columns = ["total_crimes", "crime_sexual_violence", "crime_violence", "crime_property", "crime_vandalism", "crime_other"]
+    crime_columns = ["total_crimes", "crime_sexual_violence", "crime_violence", "crime_property", "crime_vandalism"]
     for col in crime_columns:
         merged_df[col] = merged_df[col].fillna(0)
 
