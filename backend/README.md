@@ -42,6 +42,15 @@ python fetch_buurt_namen.py
 - Haalt alle buurt codes + namen op van CBS 85984NED
 - Output: `data/cbs_buurt_namen_85984.csv`
 
+**Stap 1b: VOLLEDIGE CBS Dataset (Optioneel - voor alle beschikbare data)**
+```bash
+python build_clusters.py --fetch-complete
+```
+- Haalt ALLE 125+ CBS indicatoren op van 85984NED
+- Inclusief afstanden, voorzieningen, gedetailleerde demografie
+- Output: `data/cbs_buurten_raw_complete.csv`
+- ⚠️ **Groot bestand (~50MB), lange download tijd**
+
 **Stap 2: CBS Demografische Data Ophalen**
 ```bash
 python build_clusters.py --fetch-only

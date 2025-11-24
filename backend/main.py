@@ -849,13 +849,28 @@ async def buurt_stats(buurt_code: str = Query(..., description="CBS buurtcode, b
             "65+": int(row.get("k_65JaarOfOuder_12", 0)) if pd.notna(row.get("k_65JaarOfOuder_12")) else 0,
         },
 
-        # Inkomen - niet beschikbaar in 85984NED
+        # Huishoudens
+        "totalHouseholds": int(row.get("HuishoudensTotaal_29", 0)) if pd.notna(row.get("HuishoudensTotaal_29")) else None,
+        "avgHouseholdSize": float(row.get("GemiddeldeHuishoudensgrootte_33", 0)) if pd.notna(row.get("GemiddeldeHuishoudensgrootte_33")) else None,
+
+        # Stedelijkheid (1=zeer sterk stedelijk, 5=niet stedelijk)
+        "stedelijkheid": int(row.get("MateVanStedelijkheid_122", 0)) if pd.notna(row.get("MateVanStedelijkheid_122")) else None,
+
+        # Inkomen - niet beschikbaar in 85984NED dataset
         "incomePerPerson": None,
 
         # Criminaliteit (uit onze voorbewerkte data)
         "vermogensMisdrijven": float(row.get("crime_property", 0)) if pd.notna(row.get("crime_property")) else None,
         "geweldsMisdrijven": float(row.get("crime_violence", 0)) if pd.notna(row.get("crime_violence")) else None,
         "vernielingsMisdrijven": float(row.get("crime_vandalism", 0)) if pd.notna(row.get("crime_vandalism")) else None,
+        "totaalMisdrijven": float(row.get("GeregistreerdeMisdrijven_1", 0)) if pd.notna(row.get("GeregistreerdeMisdrijven_1")) else None,
+
+        # Afstanden tot voorzieningen
+        "afstandHuisarts": float(row.get("AfstandTotHuisartsenpraktijk_112", 0)) if pd.notna(row.get("AfstandTotHuisartsenpraktijk_112")) else None,
+        "afstandSupermarkt": float(row.get("AfstandTotGroteSupermarkt_113", 0)) if pd.notna(row.get("AfstandTotGroteSupermarkt_113")) else None,
+        "afstandKinderdagverblijf": float(row.get("AfstandTotKinderdagverblijf_114", 0)) if pd.notna(row.get("AfstandTotKinderdagverblijf_114")) else None,
+        "afstandSchool": float(row.get("AfstandTotSchool_115", 0)) if pd.notna(row.get("AfstandTotSchool_115")) else None,
+        "scholenBinnen3Km": int(row.get("ScholenBinnen3Km_116", 0)) if pd.notna(row.get("ScholenBinnen3Km_116")) else None,
 
         # Bereken percentage 65+ uit leeftijdsgroepen
         "pct65Plus": None,

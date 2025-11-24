@@ -2101,6 +2101,107 @@ export default function App() {
                           </div>
                         )}
 
+                        {result.cbsStats?.totalHouseholds != null && (
+                          <div className="stat-card">
+                            <div className="stat-label">Totaal huishoudens</div>
+                            <div className="stat-value">
+                              {formatOrNA(result.cbsStats.totalHouseholds, nf0)}
+                            </div>
+                            <div className="stat-help">
+                              Totaal aantal huishoudens in deze buurt.
+                            </div>
+                          </div>
+                        )}
+
+                        {result.cbsStats?.avgHouseholdSize != null && (
+                          <div className="stat-card">
+                            <div className="stat-label">Gem. huishoudensgrootte</div>
+                            <div className="stat-value">
+                              {formatOrNA(result.cbsStats.avgHouseholdSize, nf1)}
+                            </div>
+                            <div className="stat-help">
+                              Gemiddeld aantal personen per huishouden.
+                            </div>
+                          </div>
+                        )}
+
+                        {result.cbsStats?.totaalMisdrijven != null && (
+                          <div className="stat-card">
+                            <div className="stat-label">Totaal misdrijven</div>
+                            <div className="stat-value">
+                              {formatOrNA(result.cbsStats.totaalMisdrijven, nf0)}
+                            </div>
+                            <div className="stat-help">
+                              Totaal aantal geregistreerde misdrijven per jaar.
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Afstanden tot voorzieningen */}
+                        {result.cbsStats?.afstandHuisarts != null && (
+                          <div className="stat-card">
+                            <div className="stat-label">Afstand huisarts</div>
+                            <div className="stat-value">
+                              {formatOrNA(result.cbsStats.afstandHuisarts, nf1)}
+                              <span className="small"> km</span>
+                            </div>
+                            <div className="stat-help">
+                              Afstand tot dichtstbijzijnde huisartsenpraktijk.
+                            </div>
+                          </div>
+                        )}
+
+                        {result.cbsStats?.afstandSupermarkt != null && (
+                          <div className="stat-card">
+                            <div className="stat-label">Afstand supermarkt</div>
+                            <div className="stat-value">
+                              {formatOrNA(result.cbsStats.afstandSupermarkt, nf1)}
+                              <span className="small"> km</span>
+                            </div>
+                            <div className="stat-help">
+                              Afstand tot dichtstbijzijnde grote supermarkt.
+                            </div>
+                          </div>
+                        )}
+
+                        {result.cbsStats?.afstandSchool != null && (
+                          <div className="stat-card">
+                            <div className="stat-label">Afstand school</div>
+                            <div className="stat-value">
+                              {formatOrNA(result.cbsStats.afstandSchool, nf1)}
+                              <span className="small"> km</span>
+                            </div>
+                            <div className="stat-help">
+                              Afstand tot dichtstbijzijnde school.
+                            </div>
+                          </div>
+                        )}
+
+                        {result.cbsStats?.afstandKinderdagverblijf != null && (
+                          <div className="stat-card">
+                            <div className="stat-label">Afstand kinderopvang</div>
+                            <div className="stat-value">
+                              {formatOrNA(result.cbsStats.afstandKinderdagverblijf, nf1)}
+                              <span className="small"> km</span>
+                            </div>
+                            <div className="stat-help">
+                              Afstand tot dichtstbijzijnde kinderdagverblijf.
+                            </div>
+                          </div>
+                        )}
+
+                        {result.cbsStats?.scholenBinnen3Km != null && (
+                          <div className="stat-card">
+                            <div className="stat-label">Scholen binnen 3km</div>
+                            <div className="stat-value">
+                              {formatOrNA(result.cbsStats.scholenBinnen3Km, nf0)}
+                            </div>
+                            <div className="stat-help">
+                              Aantal scholen binnen 3 kilometer afstand.
+                            </div>
+                          </div>
+                        )}
+
                         {result.cbsStats?.pctAppartementen != null && (
                           <div className="stat-card">
                             <div className="stat-label">Woningen</div>
@@ -2218,6 +2319,132 @@ export default function App() {
                             <div className="comparison-diff">
                               {result.cbsStats?.incomePerPerson && compareResult.cbsStats?.incomePerPerson
                                 ? `${result.cbsStats.incomePerPerson > compareResult.cbsStats.incomePerPerson ? '+' : ''}${(result.cbsStats.incomePerPerson - compareResult.cbsStats.incomePerPerson).toFixed(1)}`
+                                : 'n.v.t.'}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Stedelijkheid vergelijking */}
+                        {(result.cbsStats?.stedelijkheid != null || compareResult.cbsStats?.stedelijkheid != null) && (
+                          <div className="comparison-row">
+                            <div className="comparison-label">Stedelijkheid</div>
+                            <div className="comparison-value main-value">
+                              {result.cbsStats?.stedelijkheid ? `${result.cbsStats.stedelijkheid}/5` : 'n.v.t.'}
+                            </div>
+                            <div className="comparison-value compare-value">
+                              {compareResult.cbsStats?.stedelijkheid ? `${compareResult.cbsStats.stedelijkheid}/5` : 'n.v.t.'}
+                            </div>
+                            <div className="comparison-diff">
+                              {result.cbsStats?.stedelijkheid && compareResult.cbsStats?.stedelijkheid
+                                ? result.cbsStats.stedelijkheid === compareResult.cbsStats.stedelijkheid ? 'gelijk' : `${result.cbsStats.stedelijkheid > compareResult.cbsStats.stedelijkheid ? 'steds.' : 'minder steds.'}`
+                                : 'n.v.t.'}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Afstand huisarts vergelijking */}
+                        {(result.cbsStats?.afstandHuisarts != null || compareResult.cbsStats?.afstandHuisarts != null) && (
+                          <div className="comparison-row">
+                            <div className="comparison-label">Huisarts</div>
+                            <div className="comparison-value main-value">
+                              {formatOrNA(result.cbsStats?.afstandHuisarts, nf1)} km
+                            </div>
+                            <div className="comparison-value compare-value">
+                              {formatOrNA(compareResult.cbsStats?.afstandHuisarts, nf1)} km
+                            </div>
+                            <div className="comparison-diff">
+                              {result.cbsStats?.afstandHuisarts && compareResult.cbsStats?.afstandHuisarts
+                                ? `${result.cbsStats.afstandHuisarts < compareResult.cbsStats.afstandHuisarts ? 'dichterbij' : result.cbsStats.afstandHuisarts > compareResult.cbsStats.afstandHuisarts ? 'verder weg' : 'gelijk'}`
+                                : 'n.v.t.'}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Afstand supermarkt vergelijking */}
+                        {(result.cbsStats?.afstandSupermarkt != null || compareResult.cbsStats?.afstandSupermarkt != null) && (
+                          <div className="comparison-row">
+                            <div className="comparison-label">Supermarkt</div>
+                            <div className="comparison-value main-value">
+                              {formatOrNA(result.cbsStats?.afstandSupermarkt, nf1)} km
+                            </div>
+                            <div className="comparison-value compare-value">
+                              {formatOrNA(compareResult.cbsStats?.afstandSupermarkt, nf1)} km
+                            </div>
+                            <div className="comparison-diff">
+                              {result.cbsStats?.afstandSupermarkt && compareResult.cbsStats?.afstandSupermarkt
+                                ? `${result.cbsStats.afstandSupermarkt < compareResult.cbsStats.afstandSupermarkt ? 'dichterbij' : result.cbsStats.afstandSupermarkt > compareResult.cbsStats.afstandSupermarkt ? 'verder weg' : 'gelijk'}`
+                                : 'n.v.t.'}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Afstand school vergelijking */}
+                        {(result.cbsStats?.afstandSchool != null || compareResult.cbsStats?.afstandSchool != null) && (
+                          <div className="comparison-row">
+                            <div className="comparison-label">School</div>
+                            <div className="comparison-value main-value">
+                              {formatOrNA(result.cbsStats?.afstandSchool, nf1)} km
+                            </div>
+                            <div className="comparison-value compare-value">
+                              {formatOrNA(compareResult.cbsStats?.afstandSchool, nf1)} km
+                            </div>
+                            <div className="comparison-diff">
+                              {result.cbsStats?.afstandSchool && compareResult.cbsStats?.afstandSchool
+                                ? `${result.cbsStats.afstandSchool < compareResult.cbsStats.afstandSchool ? 'dichterbij' : result.cbsStats.afstandSchool > compareResult.cbsStats.afstandSchool ? 'verder weg' : 'gelijk'}`
+                                : 'n.v.t.'}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Huishoudens vergelijking */}
+                        {(result.cbsStats?.totalHouseholds != null || compareResult.cbsStats?.totalHouseholds != null) && (
+                          <div className="comparison-row">
+                            <div className="comparison-label">Huishoudens</div>
+                            <div className="comparison-value main-value">
+                              {formatOrNA(result.cbsStats?.totalHouseholds, nf0)}
+                            </div>
+                            <div className="comparison-value compare-value">
+                              {formatOrNA(compareResult.cbsStats?.totalHouseholds, nf0)}
+                            </div>
+                            <div className="comparison-diff">
+                              {result.cbsStats?.totalHouseholds && compareResult.cbsStats?.totalHouseholds
+                                ? `${result.cbsStats.totalHouseholds > compareResult.cbsStats.totalHouseholds ? '+' : ''}${(result.cbsStats.totalHouseholds - compareResult.cbsStats.totalHouseholds).toLocaleString('nl-NL')}`
+                                : 'n.v.t.'}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Huishoudensgrootte vergelijking */}
+                        {(result.cbsStats?.avgHouseholdSize != null || compareResult.cbsStats?.avgHouseholdSize != null) && (
+                          <div className="comparison-row">
+                            <div className="comparison-label">Gem. gezin</div>
+                            <div className="comparison-value main-value">
+                              {formatOrNA(result.cbsStats?.avgHouseholdSize, nf1)}
+                            </div>
+                            <div className="comparison-value compare-value">
+                              {formatOrNA(compareResult.cbsStats?.avgHouseholdSize, nf1)}
+                            </div>
+                            <div className="comparison-diff">
+                              {result.cbsStats?.avgHouseholdSize && compareResult.cbsStats?.avgHouseholdSize
+                                ? `${result.cbsStats.avgHouseholdSize > compareResult.cbsStats.avgHouseholdSize ? '+' : ''}${(result.cbsStats.avgHouseholdSize - compareResult.cbsStats.avgHouseholdSize).toFixed(1)}`
+                                : 'n.v.t.'}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Totaal misdrijven vergelijking */}
+                        {(result.cbsStats?.totaalMisdrijven != null || compareResult.cbsStats?.totaalMisdrijven != null) && (
+                          <div className="comparison-row">
+                            <div className="comparison-label">Misdaad totaal</div>
+                            <div className="comparison-value main-value">
+                              {formatOrNA(result.cbsStats?.totaalMisdrijven, nf0)}
+                            </div>
+                            <div className="comparison-value compare-value">
+                              {formatOrNA(compareResult.cbsStats?.totaalMisdrijven, nf0)}
+                            </div>
+                            <div className="comparison-diff">
+                              {result.cbsStats?.totaalMisdrijven && compareResult.cbsStats?.totaalMisdrijven
+                                ? `${result.cbsStats.totaalMisdrijven > compareResult.cbsStats.totaalMisdrijven ? '+' : ''}${(result.cbsStats.totaalMisdrijven - compareResult.cbsStats.totaalMisdrijven).toLocaleString('nl-NL')}`
                                 : 'n.v.t.'}
                             </div>
                           </div>
