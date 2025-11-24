@@ -272,6 +272,7 @@ export default function App() {
   }
 
   async function handleSearchFromSuggestion(address, pdokDoc) {
+    console.log("App: handleSearchFromSuggestion called with", { address, pdokDoc });
     setQuery(address);
     setError("");
     setResult(null);
@@ -317,6 +318,7 @@ export default function App() {
   }
 
   async function runSearch(address, pdokDoc) {
+    console.log("App: runSearch called with", { address, pdokDoc });
     // Als we een pdokDoc hebben, gebruik deze direct
     // Anders doe een normale PDOK zoekopdracht
     let doc;

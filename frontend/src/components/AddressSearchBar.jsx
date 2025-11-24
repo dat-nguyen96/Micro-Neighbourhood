@@ -114,9 +114,7 @@ export default function AddressSearchBar({ onSelect, loading }) {
         chooseSuggestion(suggestions[activeIndex]);
       } else {
         // No suggestions or dropdown not open - search with current query
-        setTimeout(() => {
-          onSelect(query);
-        }, 10);
+        onSelect(query);
       }
       return;
     }
@@ -146,13 +144,13 @@ export default function AddressSearchBar({ onSelect, loading }) {
       s.weergavenaam ||
       `${s.straatnaam || ""} ${s.huisnummer || ""} ${s.woonplaatsnaam || ""}`;
 
+    console.log("AddressSearchBar: chooseSuggestion called with", { label, s });
+
     setQuery(label);
     setOpen(false);
 
-    // Small delay to ensure dropdown is closed before triggering search
-    setTimeout(() => {
-      onSelect(label, s); // pass raw PDOK doc
-    }, 10);
+    // Immediately trigger search with PDOK doc
+    onSelect(label, s); // pass raw PDOK doc
   }
 
   return (
@@ -185,7 +183,10 @@ export default function AddressSearchBar({ onSelect, loading }) {
                 className={
                   "dropdown-item " + (i === activeIndex ? "active" : "")
                 }
-                onClick={(e) => chooseSuggestion(s, e)}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  chooseSuggestion(s, e);
+                }}
               >
                 {label}
                 {s.postcode && (
