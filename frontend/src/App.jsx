@@ -2123,6 +2123,16 @@ export default function App() {
                           </div>
                         )}
 
+                        {/* Leeftijd chart */}
+                        {ageChartOptions && (
+                          <div className="chart-card" style={{ marginTop: "1rem", marginBottom: "0.5rem" }}>
+                            <HighchartsReact
+                              highcharts={Highcharts}
+                              options={ageChartOptions}
+                            />
+                          </div>
+                        )}
+
                         {result.cbsStats.incomePerPerson != null && (
                           <div className="stat-card">
                             <div className="stat-label">
@@ -2134,6 +2144,16 @@ export default function App() {
                             <div className="stat-help">
                               Gemiddeld besteedbaar inkomen per persoon (CBS).
                             </div>
+                          </div>
+                        )}
+
+                        {/* Inkomen chart */}
+                        {incomeChartOptions && (
+                          <div className="chart-card" style={{ marginTop: "1rem", marginBottom: "0.5rem" }}>
+                            <HighchartsReact
+                              highcharts={Highcharts}
+                              options={incomeChartOptions}
+                            />
                           </div>
                         )}
 
