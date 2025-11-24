@@ -91,6 +91,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Serve static files from data directory
+app.mount("/data", StaticFiles(directory="data"), name="data")
+
 # ---------- Pydantic modellen ----------
 
 
@@ -272,10 +275,14 @@ def analyse_neighbourhood_data(data: Dict[str, Any]) -> Tuple[str, Dict[str, Opt
             summary_lines.append(f"- Beschrijving: {cluster_info['label_long']}")
 
     # 4) Criminaliteitsgegevens
+    crime_info_added = False
+
     if "crimeData" in data and data["crimeData"]:
         crime_info = data["crimeData"]
         print(f"[ANALYSE] Crime data found: {crime_info}")
         summary_lines.append("\nCriminaliteitsgegevens:")
+        crime_info_added = True
+
         if "total_crimes" in crime_info and crime_info["total_crimes"] is not None:
             summary_lines.append(f"- Totaal geregistreerde misdrijven: {crime_info['total_crimes']}")
         if "crime_rate_per_1000" in crime_info and crime_info["crime_rate_per_1000"] is not None:
@@ -287,6 +294,42 @@ def analyse_neighbourhood_data(data: Dict[str, Any]) -> Tuple[str, Dict[str, Opt
             else:
                 safety = "hoger criminaliteitsniveau"
             summary_lines.append(f"- Misdaad per 1000 inwoners: {rate:.1f} ({safety})")
+
+    # Gedetailleerde criminaliteitscijfers uit CBS 83765NED
+    if "cbsStats" in data and data["cbsStats"]:
+        cbs_stats = data["cbsStats"]
+        detailed_crime = []
+
+        if "geweldsMisdrijven" in cbs_stats and cbs_stats["geweldsMisdrijven"] is not None:
+            geweld_rate = float(cbs_stats["geweldsMisdrijven"])
+            if geweld_rate < 2:
+                geweld_level = "zeer laag geweldsniveau"
+            elif geweld_rate < 5:
+                geweld_level = "laag geweldsniveau"
+            elif geweld_rate < 10:
+                geweld_level = "gemiddeld geweldsniveau"
+            else:
+                geweld_level = "hoog geweldsniveau"
+            detailed_crime.append(f"- Gewelds- en seksuele misdrijven: {geweld_rate:.1f} per 1.000 inw. ({geweld_level})")
+
+        if "vermogensMisdrijven" in cbs_stats and cbs_stats["vermogensMisdrijven"] is not None:
+            vermogen_rate = float(cbs_stats["vermogensMisdrijven"])
+            if vermogen_rate < 5:
+                vermogen_level = "zeer laag inbraakrisico"
+            elif vermogen_rate < 15:
+                vermogen_level = "laag inbraakrisico"
+            elif vermogen_rate < 30:
+                vermogen_level = "gemiddeld inbraakrisico"
+            else:
+                vermogen_level = "hoog inbraakrisico"
+            detailed_crime.append(f"- Vermogensmisdrijven (inbraak/diefstal woning): {vermogen_rate:.1f} per 1.000 inw. ({vermogen_level})")
+
+        if detailed_crime:
+            if not crime_info_added:
+                summary_lines.append("\nCriminaliteitsgegevens:")
+                crime_info_added = True
+            summary_lines.extend(detailed_crime)
+            print(f"[ANALYSE] Detailed crime stats added: {len(detailed_crime)} categories")
 
     # 5) Vergelijkbare buurten (KNN resultaten)
     if "similarBuurten" in data and data["similarBuurten"] and "neighbours" in data["similarBuurten"]:
@@ -475,11 +518,13 @@ uitleg voor iemand die overweegt in de buurt "{buurt_naam}" te wonen.
 
 BELANGRIJK CONTEXT:
 - Dit verhaal gaat SPECIFIEK over de buurt "{buurt_naam}" in {gemeente_naam}
-- De data bevat ook machine learning informatie zoals:
+- De data bevat gedetailleerde criminaliteitscijfers:
+  * Gewelds- en seksuele misdrijven per 1.000 inwoners
+  * Vermogensmisdrijven (inbraak/diefstal woning) per 1.000 inwoners
+- Plus machine learning informatie:
   * Cluster classificatie (buurt type gebaseerd op socio-demografische data)
-  * Criminaliteitsgegevens (geregistreerde misdrijven per buurt)
   * Vergelijkbare buurten gevonden via KNN algoritme
-- Gebruik deze ML-inzichten om de buurtbeschrijving te verrijken met context over veiligheid, leefbaarheid en hoe deze buurt zich verhoudt tot andere Nederlandse buurten.
+- Gebruik alle veiligheids- en leefbaarheidsinzichten om de buurtbeschrijving te verrijken.
 
 Regels:
 - Schrijf in het Nederlands.
@@ -488,7 +533,7 @@ Regels:
 - Geen juridisch, financieel of veiligheidsadvies.
 - Wees beschrijvend maar neutraal.
 - Focus op vibe: druk/rustig, jong/oud, voorzieningen, woningtype.
-- Gebruik de cluster informatie om bredere context te geven over het buurtkarakter van "{buurt_naam}".
+- Gebruik de cluster informatie en criminaliteitscijfers om context te geven over de veiligheid en leefbaarheid van "{buurt_naam}".
 
 Persona van de lezer: {persona}
 

@@ -45,6 +45,10 @@ FEATURE_COLUMNS: List[str] = [
     "k_25Tot45Jaar_10",
     "k_45Tot65Jaar_11",
     "k_65JaarOfOuder_12",
+    # Nieuwe criminaliteitsfeatures
+    "TotaalDiefstalUitWoningSchuurED_106",  # Vermogensmisdrijven (diefstal woning)
+    "VernielingMisdrijfTegenOpenbareOrde_107",  # Vernieling/openbare orde
+    "GeweldsEnSeksueleMisdrijven_108",  # Geweld/seksuele misdrijven
 ]
 
 # ---- CBS fetch helper (eenmalig offline) ----

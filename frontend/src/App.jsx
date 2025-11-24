@@ -285,6 +285,10 @@ export default function App() {
             const density = pick(row, "Bevolkingsdichtheid_33");
             const gemeenteNaam = pick(row, "Gemeentenaam_1");
 
+            // Criminaliteitscijfers uit 83765NED
+            const geweldsMisdrijven = pick(row, "GeweldsEnSeksueleMisdrijven_108");
+            const vermogensMisdrijven = pick(row, "TotaalDiefstalUitWoningSchuurED_106");
+
             // Leeftijdsgroepen (absolute aantallen)
             const ageGroups = {
               "0–15": pick(row, "k_0Tot15Jaar_8"),
@@ -357,6 +361,9 @@ export default function App() {
               totalCars,
               ageGroups,
               amenities,
+              // Nieuwe criminaliteitscijfers
+              geweldsMisdrijven,
+              vermogensMisdrijven,
             };
 
             console.log("CBS row for buurt:", buurtCode, row);
@@ -1052,19 +1059,36 @@ export default function App() {
 
                       {result.crimeData && result.crimeData.total_crimes != null && (
                         <div className="stat-card">
-                          <div className="stat-label">Criminaliteit</div>
+                          <div className="stat-label">Criminaliteit (2024)</div>
                           <div className="stat-value">
                             {formatOrNA(result.crimeData.total_crimes, nf0)}
                           </div>
                           <div className="stat-help">
                             Geregistreerde misdrijven in deze buurt (CBS Politie data).
-                            {result.crimeData.crime_rate_per_1000 != null && (
-                              <div style={{ marginTop: "0.25rem" }}>
-                                <small>
-                                  {formatOrNA(result.crimeData.crime_rate_per_1000, nf1)} per 1000 inwoners
-                                </small>
-                              </div>
-                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {result.cbsStats?.geweldsMisdrijven != null && (
+                        <div className="stat-card">
+                          <div className="stat-label">Geweldsmisdrijven</div>
+                          <div className="stat-value">
+                            {formatOrNA(result.cbsStats.geweldsMisdrijven, nf0)}
+                          </div>
+                          <div className="stat-help">
+                            Gewelds- en seksuele misdrijven per 1.000 inwoners (CBS 2024).
+                          </div>
+                        </div>
+                      )}
+
+                      {result.cbsStats?.vermogensMisdrijven != null && (
+                        <div className="stat-card">
+                          <div className="stat-label">Vermogensmisdrijven</div>
+                          <div className="stat-value">
+                            {formatOrNA(result.cbsStats.vermogensMisdrijven, nf0)}
+                          </div>
+                          <div className="stat-help">
+                            Diefstal uit woning/schuur e.d. per 1.000 inwoners (CBS 2024).
                           </div>
                         </div>
                       )}
